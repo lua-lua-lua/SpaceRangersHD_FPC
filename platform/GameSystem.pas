@@ -18,9 +18,11 @@ function LockGameInstance: Boolean;
 
 function GameTickCount: Cardinal;
 function GameCpuClockMHz: Double;
+function GameOperatingSystemDescription: UnicodeString;
 function GameUserDirectory: UnicodeString;
 function NativeGamePath(const Path: UnicodeString): UnicodeString;
 procedure SetGameDirectory(const Path: UnicodeString);
+function GameNativeExceptionDetails(E: TObject): UnicodeString;
 
 implementation
 
@@ -50,29 +52,79 @@ uses
 var
   InstanceFile: THandle = THandle(-1);
 
+function GameNativeExceptionDetails(E: TObject): UnicodeString;
+{$IFDEF MSWINDOWS}
+var
+  Code, Parameters: Cardinal;
+  Address: Pointer;
+  Information: array[0..2] of PtrUInt;
+  I: Integer;
+  Memory: TMemoryBasicInformation;
+  ModulePath: array[0..1023] of WideChar;
+  ModuleLength: Cardinal;
+  Access: UnicodeString;
+{$ENDIF}
+begin
+  Result := '';
+{$IFDEF MSWINDOWS}
+  // Pascal-raised EExternal objects have an empty native exception record.
+  if not (E is EExternal) or (EExternal(E).ExceptionRecord = nil) then
+    Exit;
+  Code := EExternal(E).ExceptionRecord^.ExceptionCode;
+  Address := EExternal(E).ExceptionRecord^.ExceptionAddress;
+  Parameters := EExternal(E).ExceptionRecord^.NumberParameters;
+  for I := 0 to 2 do
+    if Cardinal(I) < Parameters then
+      Information[I] := PtrUInt(EExternal(E).ExceptionRecord^.ExceptionInformation[I])
+    else
+      Information[I] := 0;
+  if Code = 0 then
+    Exit;
+  Result := 'Native exception code=$' + IntToHex(Code, 8) + ' address=$' + IntToHex(PtrUInt(Address), SizeOf(Pointer) * 2);
+  if (VirtualQuery(Address, Memory, SizeOf(Memory)) <> 0) and (Memory._Type = MEM_IMAGE) then
+  begin
+    ModuleLength := GetModuleFileNameW(HMODULE(Memory.AllocationBase), ModulePath, Length(ModulePath));
+    if (ModuleLength > 0) and (ModuleLength < Cardinal(Length(ModulePath))) then
+      Result :=
+          Result
+              + ' module='
+              + ExtractFileName(UnicodeString(ModulePath))
+              + '+$'
+              + IntToHex(PtrUInt(Address) - PtrUInt(Memory.AllocationBase), 1);
+  end;
+  if ((Code = $C0000005) or (Code = $C0000006)) and (Parameters >= 2) then
+  begin
+    case Information[0] of
+      0: Access := 'read';
+      1: Access := 'write';
+      8: Access := 'execute';
+    else
+      Access := UIntToStr(Information[0]);
+    end;
+    Result := Result + ' access=' + Access + ' target=$' + IntToHex(Information[1], SizeOf(Pointer) * 2);
+    if (Code = $C0000006) and (Parameters >= 3) then
+      Result := Result + ' io-status=$' + IntToHex(Information[2], 8);
+  end;
+{$ENDIF}
+end;
+
+{$IFDEF SWITCH}
+procedure NativeSwitchMemoryStatus(out Capacity, Available: QWord); cdecl; external name 'sr_switch_memory_status';
+{$ENDIF}
+
 {$IFDEF FPC_WASM_EMSCRIPTEN}
-procedure NativeWasmMemoryStatus(
-    out Capacity,
-    Available: QWord
-); cdecl; external name 'sr_fpc_memory_status';
+procedure NativeWasmMemoryStatus(out Capacity, Available: QWord); cdecl; external name 'sr_fpc_memory_status';
 {$ENDIF}
 
 {$IFDEF MSWINDOWS}
 // The FPC Windows unit does not declare the extended memory query.
-function NativeGlobalMemoryStatusEx(
-    var Status: TGameMemoryStatus
-): LongBool; stdcall; external 'kernel32.dll' name 'GlobalMemoryStatusEx';
+function NativeGlobalMemoryStatusEx(var Status: TGameMemoryStatus): LongBool; stdcall; external 'kernel32.dll' name 'GlobalMemoryStatusEx';
 {$ENDIF}
 
 {$IFDEF DARWIN}
 function mach_host_self: Cardinal; cdecl; external 'c';
 function host_page_size(Host: Cardinal; out Size: PtrUInt): Integer; cdecl; external 'c';
-function host_statistics64(
-    Host: Cardinal;
-    Flavor: Integer;
-    Info: Pointer;
-    var Count: Cardinal
-): Integer; cdecl; external 'c';
+function host_statistics64(Host: Cardinal; Flavor: Integer; Info: Pointer; var Count: Cardinal): Integer; cdecl; external 'c';
 function mach_port_deallocate(Task, Name: Cardinal): Integer; cdecl; external 'c';
 var
   mach_task_self_: Cardinal;
@@ -166,9 +218,13 @@ var
 begin
   Status := Default(TGameMemoryStatus);
   Status.Length := SizeOf(Status);
-{$IF defined(FPC_WASM_EMSCRIPTEN)}
+{$IF defined(FPC_WASM_EMSCRIPTEN) or defined(SWITCH)}
   Heap := GetFPCHeapStatus;
+  {$IFDEF SWITCH}
+  NativeSwitchMemoryStatus(Status.TotalPhys, Status.AvailPhys);
+  {$ELSE}
   NativeWasmMemoryStatus(Status.TotalPhys, Status.AvailPhys);
+  {$ENDIF}
   // FPC keeps free blocks inside arenas owned by malloc. Those bytes are not
   // in malloc's free list, so add the current Pascal thread's reusable space.
   // Other threads' private arenas remain reserved and are counted conservatively.
@@ -240,13 +296,25 @@ begin
   Result := Cardinal(GetTickCount64);
 end;
 
-{$IF defined(UNIX) or defined(WASI)}
+{$IF defined(UNIX) or defined(WASI) or defined(SWITCH)}
 function ResolveGamePathCase(const Path: UnicodeString): UnicodeString;
 var
   Directory, Name: UnicodeString;
   Entry: TUnicodeSearchRec;
+  {$IFDEF SWITCH}
+  Volume: UnicodeString;
+  {$ENDIF}
 begin
   Result := Path;
+  {$IFDEF SWITCH}
+  // The SD filesystem already matches names case-insensitively. Keep the
+  // fallback for other devoptab mounts (romfs, for example, is case-sensitive).
+  Volume := ExtractFileDrive(Path);
+  if Volume = '' then
+    Volume := ExtractFileDrive(GetCurrentDir);
+  if SameText(Volume, 'sdmc:') then
+    Exit;
+  {$ENDIF}
   if (Path = '') or (FileGetAttr(Path) <> -1) then
     Exit;
   // Keep exact matches cheap. Resolve each missing component so loose mods
@@ -280,13 +348,16 @@ begin
   for Index := 1 to Length(Result) do
     if (Result[Index] = '\') or (Result[Index] = '/') then
       Result[Index] := DirectorySeparator;
-{$IF defined(UNIX) or defined(WASI)}
+{$IF defined(UNIX) or defined(WASI) or defined(SWITCH)}
   Result := ResolveGamePathCase(Result);
 {$ENDIF}
 end;
 
 function GameUserDirectory: UnicodeString;
 begin
+{$IFDEF SWITCH}
+  Exit('sdmc:/switch/SpaceRangersHD/user/');
+{$ENDIF}
 {$IFDEF ANDROID}
   // Set by the SDL launcher before it loads the Pascal library. Android does
   // not provide a useful HOME, and shared/external storage is not a save path.
@@ -324,6 +395,71 @@ begin
     raise EInOutError.Create('Cannot open game directory: ' + UTF8Encode(Path));
 end;
 
+{$IFDEF DARWIN}
+function DarwinSystemText(Name: PAnsiChar): UnicodeString;
+var
+  Buffer: array[0..255] of AnsiChar;
+  Size: size_t;
+begin
+  Result := '';
+  FillChar(Buffer, SizeOf(Buffer), 0);
+  Size := SizeOf(Buffer);
+  if (FPsysctlbyname(Name, @Buffer, @Size, nil, 0) = 0) and (Size > 0) and (Size <= SizeOf(Buffer)) then
+    Result := UTF8Decode(UTF8String(PAnsiChar(@Buffer[0])));
+end;
+{$ENDIF}
+
+function GameOperatingSystemDescription: UnicodeString;
+{$IFDEF DARWIN}
+var
+  Version, Build: UnicodeString;
+{$ELSEIF Defined(LINUX)}
+var
+  Info: utsname;
+{$ENDIF}
+begin
+{$IFDEF DARWIN}
+  {$IFDEF SRHD_IOS}
+  Result := 'iOS';
+  {$ELSE}
+  Result := 'macOS';
+  {$ENDIF}
+  Version := DarwinSystemText('kern.osproductversion');
+  Build := DarwinSystemText('kern.osversion');
+  if Version <> '' then
+    Result := Result + ' ' + Version
+  else
+  begin
+    Version := DarwinSystemText('kern.osrelease');
+    if Version <> '' then
+      Result := Result + ' (product version unavailable; Darwin ' + Version + ')'
+    else
+      Result := Result + ' (version unavailable)';
+  end;
+  if Build <> '' then
+    Result := Result + ' build ' + Build;
+{$ELSEIF Defined(LINUX)}
+  {$IFDEF ANDROID}
+  Result := 'Android';
+  {$ELSE}
+  Result := 'Linux';
+  {$ENDIF}
+  if FpUname(Info) = 0 then
+    Result := Result + ' (kernel ' + UTF8Decode(UTF8String(PAnsiChar(@Info.release[0]))) + ')'
+  else
+    Result := Result + ' (kernel version unavailable)';
+{$ELSEIF Defined(MSWINDOWS)}
+  // The Windows startup report already supplies product/build registry data.
+  Result := 'Windows';
+{$ELSEIF Defined(SWITCH)}
+  Result := 'Nintendo Switch (OS version unavailable)';
+{$ELSEIF Defined(FPC_WASM_EMSCRIPTEN)}
+  Result := 'WebAssembly browser (host OS unavailable)';
+{$ELSE}
+  Result := 'Operating system details unavailable';
+{$ENDIF}
+end;
+
 function GameCpuClockMHz: Double;
 {$IFDEF DARWIN}
 var
@@ -349,9 +485,7 @@ begin
   Result := 1500;
 {$IFDEF DARWIN}
   Size := SizeOf(Frequency);
-  if (FPsysctlbyname('hw.cpufrequency', @Frequency, @Size, nil, 0) = 0)
-      and (Size = SizeOf(Frequency))
-      and (Frequency > 0) then
+  if (FPsysctlbyname('hw.cpufrequency', @Frequency, @Size, nil, 0) = 0) and (Size = SizeOf(Frequency)) and (Frequency > 0) then
     Result := Frequency / 1000000;
 {$ENDIF}
 {$IFDEF MSWINDOWS}

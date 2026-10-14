@@ -121,6 +121,7 @@ type
 implementation
 
 uses
+  GameDiagnostics,
   Math,
   SysUtils,
   aMyFunction,
@@ -265,12 +266,65 @@ var
   Ship: TShip2SE;
   SourceAnimation, DestinationAnimation: TShip2AnimSE;
   Index: Integer;
+  DestinationGraphKey, DestinationImagePath, DestinationReducedImagePath: WideString;
+
+  function AnimationCount(Animation: TShip2AnimSE): Integer;
+  begin
+    Result := 0;
+    while Animation <> nil do
+    begin
+      Inc(Result);
+      Animation := Animation.Next;
+    end;
+  end;
+
+  procedure LogAnimationMismatch(const Kind, SourceImage, DestinationImage: WideString; SourceFirst, DestinationFirst: TShip2AnimSE);
+  begin
+    LogGameMessage(
+        gllWarning,
+        'scene',
+        'Mirror swap from '
+            + DestinationGraphKey
+            + ' to '
+            + GraphKey
+            + ': '
+            + Kind
+            + ' animation count differs (source='
+            + IntToStr(AnimationCount(SourceFirst))
+            + ', destination='
+            + IntToStr(AnimationCount(DestinationFirst))
+            + ', source image='
+            + SourceImage
+            + ', destination image='
+            + DestinationImage
+            + ')'
+    );
+  end;
 begin
   Ship := Destination as TShip2SE;
+  DestinationGraphKey := Ship.GraphKey;
+  DestinationImagePath := Ship.ImagePath;
+  DestinationReducedImagePath := Ship.ReducedImagePath;
   Ship.GraphKey := GraphKey;
   if (Ship.ImagePath <> ImagePath) or (Ship.ReducedImagePath <> ReducedImagePath) then
   begin
-    AppendLogLineThreadSafe('Warning from CopyDataFromMirrorImage: image mismatch');
+    LogGameMessage(
+        gllDebug,
+        'scene',
+        'Mirror swap from '
+            + DestinationGraphKey
+            + ' to '
+            + GraphKey
+            + ': updating image keys (image='
+            + Ship.ImagePath
+            + ' -> '
+            + ImagePath
+            + ', reduced image='
+            + Ship.ReducedImagePath
+            + ' -> '
+            + ReducedImagePath
+            + ')'
+    );
     Ship.ImagePath := ImagePath;
     Ship.ReducedImagePath := ReducedImagePath;
   end;
@@ -286,7 +340,7 @@ begin
     SourceAnimation := SourceAnimation.Next;
   end;
   if (SourceAnimation <> nil) or (DestinationAnimation <> nil) then
-    AppendLogLineThreadSafe('Warning from CopyDataFromMirrorImage: animation mismatch');
+    LogAnimationMismatch('normal', ImagePath, DestinationImagePath, FirstAnimation, Ship.FirstAnimation);
   SourceAnimation := FirstReducedAnimation;
   DestinationAnimation := Ship.FirstReducedAnimation;
   while (SourceAnimation <> nil) and (DestinationAnimation <> nil) do
@@ -298,7 +352,7 @@ begin
     SourceAnimation := SourceAnimation.Next;
   end;
   if (SourceAnimation <> nil) or (DestinationAnimation <> nil) then
-    AppendLogLineThreadSafe('Warning from CopyDataFromMirrorImage: animation mismatch');
+    LogAnimationMismatch('reduced', ReducedImagePath, DestinationReducedImagePath, FirstReducedAnimation, Ship.FirstReducedAnimation);
   Ship.TotalAnimationWeight := TotalAnimationWeight;
   Ship.TotalReducedAnimationWeight := TotalReducedAnimationWeight;
   for Index := Low(TailOrigins) to High(TailOrigins) do
@@ -343,9 +397,7 @@ begin
     Stage := 6;
     MinimapImage.SetPositionModeW(True);
     MinimapImage.SetDepthByName(DepthExpression);
-    MinimapImage.SetPosition(
-        TruncatePointF(MakePointF(Position.X * Space.MinimapScale, Position.Y * Space.MinimapScale))
-    );
+    MinimapImage.SetPosition(TruncatePointF(MakePointF(Position.X * Space.MinimapScale, Position.Y * Space.MinimapScale)));
     MinimapImage.SetImagePath(MinimapImagePath);
     MinimapImage.SetSize(MinimapImage.GetContentSize);
     MinimapImage.SetOrigin(HalfPoint(MinimapImage.GetContentSize));
@@ -383,17 +435,22 @@ begin
   except
     on E: Exception do
     begin
-      AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
-      AppendLogLineThreadSafe('TShip2SE.Connect');
-      AppendLogLineThreadSafe(GraphKey);
-      AppendLogLineThreadSafe('lastLabel=' + IntToWideString(RotateImageConstructionStage));
-      AppendLogLineThreadSafe('self=' + UIntToStr(PtrUInt(Self)));
-      AppendLogLineThreadSafe('sp=' + UIntToStr(PtrUInt(ASpace)));
-      AppendLogLineThreadSafe('FSpace=' + UIntToStr(PtrUInt(Space)));
-      AppendLogLineThreadSafe('FImage=' + UIntToStr(PtrUInt(Image)));
+      AddGameExceptionContext(
+          E,
+          'TShip2SE.AttachToSpace; stage='
+              + IntToStr(Stage)
+              + ', graph='
+              + GraphKey
+              + ', image construction stage='
+              + IntToStr(RotateImageConstructionStage)
+              + ', space=$'
+              + IntToHex(PtrUInt(Space), SizeOf(Pointer) * 2)
+              + ', image=$'
+              + IntToHex(PtrUInt(Image), SizeOf(Pointer) * 2)
+      );
       if Space <> nil then
-        AppendLogLineThreadSafe('PGI=' + UIntToStr(PtrUInt(Space.MapPanel)));
-      raise Exception.Create('Error in procedure TShip2SE.Connect, label = ' + IntToStr(Stage));
+        AddGameExceptionContext(E, 'map panel=$' + IntToHex(PtrUInt(Space.MapPanel), SizeOf(Pointer) * 2));
+      raise;
     end;
   end;
 end;
@@ -479,11 +536,7 @@ begin
   begin
     PixelPosition := Classes.Point(Trunc(APosition.X), Trunc(APosition.Y));
     Image.SetPosition(PixelPosition);
-    MinimapImage.SetPosition(
-        TruncatePointF(
-            MakePointF(APosition.X * Space.MinimapScale, APosition.Y * Space.MinimapScale)
-        )
-    );
+    MinimapImage.SetPosition(TruncatePointF(MakePointF(APosition.X * Space.MinimapScale, APosition.Y * Space.MinimapScale)));
     for Index := Low(Tails) to High(Tails) do
       if Tails[Index] <> nil then
         Tails[Index].EmitterPosition := ImagePointToWorld(TailOrigins[Index]);
@@ -738,8 +791,7 @@ procedure TShip2SE.StartStateTimer;
 begin
   StopStateTimer;
   SelectNextAnimation(nil, 0);
-  StateTimer :=
-      Space.Screen.ScheduleCallbackTimer(StateIntervalMs, StateIntervalMs, SelectNextAnimation);
+  StateTimer := Space.Screen.ScheduleCallbackTimer(StateIntervalMs, StateIntervalMs, SelectNextAnimation);
 end;
 
 procedure TShip2SE.StopStateTimer;
@@ -872,8 +924,7 @@ begin
   begin
     TailOrigins[Index] := MakePointF(0, 0);
     if Block.CountParams('Tail' + IntToWideString(Index)) > 0 then
-      TailOrigins[Index] :=
-          PointToPointF(GetPointGI(Block.GetParam('Tail' + IntToWideString(Index))));
+      TailOrigins[Index] := PointToPointF(GetPointGI(Block.GetParam('Tail' + IntToWideString(Index))));
   end;
   if Block.CountParams('TailPrefix') > 0 then
     TailPrefix := Block.GetParam('TailPrefix')
@@ -884,8 +935,7 @@ begin
   begin
     if Block.CountParams('WeaponPort' + IntToWideString(Index)) <= 0 then
       Break;
-    WeaponPorts[Index] :=
-        PointToPointF(GetPointGI(Block.GetParam('WeaponPort' + IntToWideString(Index))));
+    WeaponPorts[Index] := PointToPointF(GetPointGI(Block.GetParam('WeaponPort' + IntToWideString(Index))));
     Inc(WeaponPortCount);
   end;
   StateIntervalMs := StrToInt(Block.GetParam('StateTime'));

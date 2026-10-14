@@ -12,7 +12,7 @@ type
 
   THexDigits = array[0..15] of WideChar;
 
-  TWideCasePair = packed record
+  TWideCasePair = record
     LowerChar: WideChar;
     UpperChar: WideChar;
   end;
@@ -53,45 +53,30 @@ type
     function IsEmpty: Boolean;
     procedure SetText(const Text: WideString);
     function GetText: WideString;
+    property Text: WideString read GetText write SetText;
+    property Count: Integer read GetCount;
+    property Strings[Index: Integer]: WideString read GetTextAt;
+    property Data[Index: Integer]: Pointer read GetDataAt write SetDataAt;
+    property Elements[Index: Integer]: TStringsElEC read GetElement;
+    property CurrentText: WideString read GetCurrentText;
+    property CurrentData: Pointer read GetCurrentData;
   end;
 
 const
 
-  HexDigits: THexDigits =
-      ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f');
+  HexDigits: THexDigits = ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f');
 
 function CountDelimitedPartsW(const Text: WideString; const Delimiters: WideString): Integer;
 
-function GetDelimitedPartStartIndexW(
-    const Text: WideString;
-    PartIndex: Integer;
-    const Delimiters: WideString
-): Integer;
+function GetDelimitedPartStartIndexW(const Text: WideString; PartIndex: Integer; const Delimiters: WideString): Integer;
 
-function GetCharDelimitedPartStartIndexW(
-    const Text: WideString;
-    PartIndex: Integer;
-    Delimiter: WideChar
-): Integer;
+function GetCharDelimitedPartStartIndexW(const Text: WideString; PartIndex: Integer; Delimiter: WideChar): Integer;
 
-function GetDelimitedPartLengthW(
-    const Text: WideString;
-    StartIndex: Integer;
-    const Delimiters: WideString
-): Integer;
+function GetDelimitedPartLengthW(const Text: WideString; StartIndex: Integer; const Delimiters: WideString): Integer;
 
-function ExtractDelimitedPartW(
-    const Text: WideString;
-    PartIndex: Integer;
-    const Delimiters: WideString
-): WideString;
+function ExtractDelimitedPartW(const Text: WideString; PartIndex: Integer; const Delimiters: WideString): WideString;
 
-function ExtractDelimitedRangeW(
-    const Text: WideString;
-    FirstPart: Integer;
-    LastPart: Integer;
-    const Delimiters: WideString
-): WideString;
+function ExtractDelimitedRangeW(const Text: WideString; FirstPart: Integer; LastPart: Integer; const Delimiters: WideString): WideString;
 
 function ExtractNextDelimitedPartW(var Text: WideString; Delimiter: WideChar): WideString;
 
@@ -111,11 +96,7 @@ function ParseDecimalToSingleW(const Text: WideString): Single;
 
 function FloatToWideString(Value: Double): WideString;
 
-function ReplaceAllWideString(
-    const Text: WideString;
-    const Search: WideString;
-    const Replacement: WideString
-): WideString;
+function ReplaceAllWideString(const Text: WideString; const Search: WideString; const Replacement: WideString): WideString;
 
 function CardinalToHexWideString(Value: Cardinal): WideString;
 
@@ -135,28 +116,15 @@ function RemoveWideStringChars(const Text: WideString; Chars: WideString): WideS
 
 function GetTextTagLengthW(Text: PWideChar; CharCount: Integer): Integer;
 
-function MatchTextTagPrefixW(
-    Text: PWideChar;
-    CharCount: Integer;
-    const Pattern: WideString;
-    const AlternatePattern: WideString
-): Boolean;
+function MatchTextTagPrefixW(Text: PWideChar; CharCount: Integer; const Pattern: WideString; const AlternatePattern: WideString): Boolean;
 
 function RemoveTextTagsW(const Text: WideString): WideString;
 
-function RemoveMatchingTextTagsW(
-    Text: WideString;
-    const Pattern: WideString;
-    const AlternatePattern: WideString
-): WideString;
+function RemoveMatchingTextTagsW(Text: WideString; const Pattern: WideString; const AlternatePattern: WideString): WideString;
 
 function CompareWideChars(Left: PWideChar; Right: PWideChar): Integer; cdecl;
 
-function FindTextOffsetW(
-    const Text: WideString;
-    const Search: WideString;
-    StartIndex: Integer = 0
-): Integer;
+function FindTextOffsetW(const Text: WideString; const Search: WideString; StartIndex: Integer = 0): Integer;
 
 function FindTextPosW(const Search: WideString; const Text: WideString): Integer;
 
@@ -337,7 +305,7 @@ begin
   if CharCount > 0 then
   begin
     SetLength(Item.Text, CharCount);
-    System.Move(Pointer(Text)^, Pointer(PWideChar(Item.Text))^, CharCount * 2);
+    System.Move(Text^, PWideChar(Item.Text)^, CharCount * SizeOf(WideChar));
   end;
 end;
 
@@ -412,7 +380,7 @@ begin
       Start := Cursor;
       while (Cursor^ <> #0) and (Cursor^ <> #10) and (Cursor^ <> #13) do
         Inc(Cursor);
-      AddSlice(Start, Integer(PAnsiChar(Cursor) - PAnsiChar(Start)) div SizeOf(WideChar));
+      AddSlice(Start, Cursor - Start);
       if Cursor^ = #13 then
         Inc(Cursor);
       if Cursor^ = #10 then
@@ -458,11 +426,7 @@ begin
   Result := Count;
 end;
 
-function GetDelimitedPartStartIndexW(
-    const Text: WideString;
-    PartIndex: Integer;
-    const Delimiters: WideString
-): Integer;
+function GetDelimitedPartStartIndexW(const Text: WideString; PartIndex: Integer; const Delimiters: WideString): Integer;
 var
   TextLength, DelimiterCount, i, j: Integer;
 begin
@@ -482,17 +446,12 @@ begin
           end;
           Break;
         end;
-    raise Exception.Create(
-        'GetSmeParEC. Str=' + Text + ' np=' + SysUtils.IntToStr(PartIndex) + ' raz=' + Delimiters);
+    raise Exception.Create('GetSmeParEC. Str=' + Text + ' np=' + SysUtils.IntToStr(PartIndex) + ' raz=' + Delimiters);
   end;
   Result := 1;
 end;
 
-function GetCharDelimitedPartStartIndexW(
-    const Text: WideString;
-    PartIndex: Integer;
-    Delimiter: WideChar
-): Integer;
+function GetCharDelimitedPartStartIndexW(const Text: WideString; PartIndex: Integer; Delimiter: WideChar): Integer;
 var
   TextLength, i: Integer;
 begin
@@ -516,11 +475,7 @@ begin
   Result := 1;
 end;
 
-function GetDelimitedPartLengthW(
-    const Text: WideString;
-    StartIndex: Integer;
-    const Delimiters: WideString
-): Integer;
+function GetDelimitedPartLengthW(const Text: WideString; StartIndex: Integer; const Delimiters: WideString): Integer;
 var
   TextLength, DelimiterCount, i, j: Integer;
 begin
@@ -536,11 +491,7 @@ begin
   Result := TextLength - StartIndex + 1;
 end;
 
-function ExtractDelimitedPartW(
-    const Text: WideString;
-    PartIndex: Integer;
-    const Delimiters: WideString
-): WideString;
+function ExtractDelimitedPartW(const Text: WideString; PartIndex: Integer; const Delimiters: WideString): WideString;
 var
   StartIndex: Integer;
 begin
@@ -548,12 +499,7 @@ begin
   Result := Copy(Text, StartIndex, GetDelimitedPartLengthW(Text, StartIndex, Delimiters));
 end;
 
-function ExtractDelimitedRangeW(
-    const Text: WideString;
-    FirstPart: Integer;
-    LastPart: Integer;
-    const Delimiters: WideString
-): WideString;
+function ExtractDelimitedRangeW(const Text: WideString; FirstPart: Integer; LastPart: Integer; const Delimiters: WideString): WideString;
 var
   StartIndex, EndIndex: Integer;
 begin
@@ -687,7 +633,7 @@ begin
   i := 0;
   while i < TextLength do
   begin
-    Code := Integer(PWideChar(Pointer(Text))[i]);
+    Code := Ord(Text[i + 1]);
     if (Code >= Ord('0')) and (Code <= Ord('9')) then
       Value := Value * 10 + (Code - Ord('0'))
     else if (Code = Ord('.')) or (Code = Ord(',')) then
@@ -698,7 +644,7 @@ begin
   Divisor := 10;
   while i < TextLength do
   begin
-    Code := Integer(PWideChar(Pointer(Text))[i]);
+    Code := Ord(Text[i + 1]);
     if (Code >= Ord('0')) and (Code <= Ord('9')) then
     begin
       Value := (Code - Ord('0')) / Divisor + Value;
@@ -707,7 +653,7 @@ begin
     Inc(i);
   end;
   for i := 0 to TextLength - 1 do
-    if Integer(PWideChar(Pointer(Text))[i]) = Ord('-') then
+    if Ord(Text[i + 1]) = Ord('-') then
     begin
       Value := -Value;
       Break;
@@ -733,7 +679,7 @@ begin
   i := 0;
   while i < TextLength do
   begin
-    Code := Integer(PWideChar(Pointer(Text))[i]);
+    Code := Ord(Text[i + 1]);
     if (Code >= Ord('0')) and (Code <= Ord('9')) then
       Value := Value * 10 + (Code - Ord('0'))
     else if (Code = Ord('.')) or (Code = Ord(',')) then
@@ -744,7 +690,7 @@ begin
   Divisor := 10;
   while i < TextLength do
   begin
-    Code := Integer(PWideChar(Pointer(Text))[i]);
+    Code := Ord(Text[i + 1]);
     if (Code >= Ord('0')) and (Code <= Ord('9')) then
     begin
       Value := (Code - Ord('0')) / Divisor + Value;
@@ -753,7 +699,7 @@ begin
     Inc(i);
   end;
   for i := 0 to TextLength - 1 do
-    if Integer(PWideChar(Pointer(Text))[i]) = Ord('-') then
+    if Ord(Text[i + 1]) = Ord('-') then
     begin
       Value := -Value;
       Break;
@@ -789,7 +735,7 @@ begin
     j := 0;
     while j < SearchLength do
     begin
-      if PWideChar(Pointer(Text))[i + j] <> PWideChar(Pointer(Search))[j] then
+      if Text[i + j + 1] <> Search[j + 1] then
         Break;
       Inc(j);
     end;
@@ -800,7 +746,7 @@ begin
     end
     else
     begin
-      Result := Result + PWideChar(Pointer(Text))[i];
+      Result := Result + Text[i + 1];
       Inc(i);
     end;
   end;
@@ -873,7 +819,7 @@ begin
   FirstIndex := 0;
   while FirstIndex < TextLength do
   begin
-    Code := Integer(PWideChar(Pointer(Text))[FirstIndex]);
+    Code := Ord(Text[FirstIndex + 1]);
     if (Code <> Ord(' ')) and (Code <> 9) and (Code <> 13) and (Code <> 10) and (Code <> 0) then
       Break;
     Inc(FirstIndex);
@@ -886,7 +832,7 @@ begin
   LastIndex := TextLength - 1;
   while LastIndex >= 0 do
   begin
-    Code := Integer(PWideChar(Pointer(Text))[LastIndex]);
+    Code := Ord(Text[LastIndex + 1]);
     if (Code <> Ord(' ')) and (Code <> 9) and (Code <> 13) and (Code <> 10) and (Code <> 0) then
       Break;
     Dec(LastIndex);
@@ -898,9 +844,9 @@ begin
   end;
   SetLength(Result, LastIndex - FirstIndex + 1);
   System.Move(
-      Pointer(AddPointerOffset(PWideChar(Text), FirstIndex * 2))^,
-      Pointer(PWideChar(Result))^,
-      (LastIndex - FirstIndex + 1) * 2
+      AddPointerOffset(PWideChar(Text), FirstIndex * SizeOf(WideChar))^,
+      PWideChar(Result)^,
+      (LastIndex - FirstIndex + 1) * SizeOf(WideChar)
   );
 end;
 
@@ -1002,11 +948,7 @@ begin
     Result := i + 1;
 end;
 
-function MatchTextTagPrefixW(
-    Text: PWideChar;
-    CharCount: Integer;
-    const Pattern, AlternatePattern: WideString
-): Boolean;
+function MatchTextTagPrefixW(Text: PWideChar; CharCount: Integer; const Pattern, AlternatePattern: WideString): Boolean;
 var
   i, PatternLength: Integer;
 begin
@@ -1043,10 +985,7 @@ begin
   end;
 end;
 
-function RemoveMatchingTextTagsW(
-    Text: WideString;
-    const Pattern, AlternatePattern: WideString
-): WideString;
+function RemoveMatchingTextTagsW(Text: WideString; const Pattern, AlternatePattern: WideString): WideString;
 var
   i, TagLength: Integer;
 begin
@@ -1067,7 +1006,7 @@ begin
     end
     else
     begin
-      Result := Result + PWideChar(Pointer(Text))[i];
+      Result := Result + Text[i + 1];
       Inc(i);
     end;
   end;
@@ -1137,10 +1076,7 @@ begin
   else
     while StartIndex <= TextLength - SearchLength do
     begin
-      if SysUtils.CompareMem(
-          Pointer(StartIndex * SizeOf(WideChar) + PAnsiChar(TextPtr)),
-          SearchPtr,
-          SearchLength * 2) then
+      if SysUtils.CompareMem(Pointer(StartIndex * SizeOf(WideChar) + PAnsiChar(TextPtr)), SearchPtr, SearchLength * SizeOf(WideChar)) then
       begin
         Result := StartIndex;
         Exit
@@ -1201,7 +1137,7 @@ begin
   i := 0;
   while i < TextLength do
   begin
-    Result := Result + PWideChar(Pointer(Text))[i];
+    Result := Result + Text[i + 1];
     Inc(i, 2);
   end;
 end;
@@ -1216,7 +1152,7 @@ begin
   i := 0;
   while i < TextLength do
   begin
-    Result := Result + PWideChar(Pointer(Text))[i];
+    Result := Result + Text[i + 1];
     if Random(10) >= 8 then
       Result := Result + WideCaseTable[Random(LastPair + 1)].UpperChar
     else
@@ -1299,11 +1235,7 @@ end;
 function CopyWideStringUnchecked(Text: WideString; Index, Count: Integer): WideString;
 begin
   SetLength(Result, Count);
-  System.Move(
-      Pointer(AddPointerOffset(PWideChar(Text), Index * 2 - 2))^,
-      Pointer(PWideChar(Result))^,
-      Count * 2
-  );
+  System.Move(AddPointerOffset(PWideChar(Text), (Index - 1) * SizeOf(WideChar))^, PWideChar(Result)^, Count * SizeOf(WideChar));
 end;
 
 end.

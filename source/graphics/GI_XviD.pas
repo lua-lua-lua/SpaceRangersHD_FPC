@@ -16,8 +16,7 @@ type
 
   TxvidGI = class;
 
-  TXvidFunction =
-      function(Handle: Pointer; Option: Integer; Param1: Pointer; Param2: Pointer): Integer; cdecl;
+  TXvidFunction = function(Handle: Pointer; Option: Integer; Param1: Pointer; Param2: Pointer): Integer; cdecl;
 
   {$PUSH}
   {$PACKRECORDS C}
@@ -101,6 +100,7 @@ var
 implementation
 
 uses
+  GameDiagnostics,
   Types,
   SysUtils,
   Direct3D9,
@@ -172,17 +172,7 @@ begin
     VideoHeight := AviFile.Height;
     if Direct3DDevice = nil then
       raise Exception.Create('TxvidGI.ImageOpen(..)::GR_D3DDevice = nil');
-    ErrorCode :=
-        Direct3DDevice.CreateTexture(
-            VideoWidth,
-            VideoHeight,
-            1,
-            0,
-            D3DFMT_X8R8G8B8,
-            D3DPOOL_MANAGED,
-            OffscreenTexture,
-            nil
-        );
+    ErrorCode := Direct3DDevice.CreateTexture(VideoWidth, VideoHeight, 1, 0, D3DFMT_X8R8G8B8, D3DPOOL_MANAGED, OffscreenTexture, nil);
     if ErrorCode <> 0 then
       raise Exception.Create(Direct3DErrorText(ErrorCode));
     SetFramePosition(1);
@@ -190,7 +180,7 @@ begin
   except
     on E: Exception do
     begin
-      AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
+      LogCurrentGameException('video', 'opening movie ' + FileName, gllWarning);
       Result := False;
       ImageClose;
     end;
@@ -206,9 +196,7 @@ begin
     Status := XvidDecore(DecoderHandle, 1, nil, nil);
     DecoderHandle := nil;
     if Status <> 0 then
-      AppendLogLineThreadSafe(
-          'Error XvidClose: xvid_decore_func - XVID_DEC_DESTROY = ' + IntToStr(Status)
-      );
+      LogGameMessage(gllWarning, 'video', 'Xvid decoder shutdown failed; status=' + IntToStr(Status));
   end;
   FreeAndNil(AviFile);
 end;

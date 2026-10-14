@@ -8,7 +8,8 @@ uses
   aItem,
   ab_Object,
   ab_Zone,
-  SE_Space;
+  SE_Space,
+  SE_Container;
 
 type
 
@@ -18,7 +19,7 @@ type
     Item: TItem;
     BonusKind: Integer;
     HiddenBonus: Boolean;
-    Visual: TObjectSE;
+    Visual: TContainerSE;
     SpawnZone: PabZone;
     procedure UpdateState; override;
     procedure Advance; override;
@@ -116,15 +117,9 @@ begin
   HiddenBonus := Hidden;
   SpawnZone := Zone;
   if HiddenBonus then
-    RetainSpaceObject(
-        Visual,
-        CreateSpaceObjectByName('Container', 'ItemAB.Unknown', Classes.Point(0, 0))
-    )
+    RetainSpaceObject(Visual, CreateSpaceObjectByName('Container', 'ItemAB.Unknown', Classes.Point(0, 0)))
   else
-    RetainSpaceObject(
-        Visual,
-        CreateSpaceObjectByName('Container', 'ItemAB.' + IntToStr(Kind), Classes.Point(0, 0))
-    );
+    RetainSpaceObject(Visual, CreateSpaceObjectByName('Container', 'ItemAB.' + IntToStr(Kind), Classes.Point(0, 0)));
 end;
 
 procedure TabItem.AttachVisual;
@@ -205,9 +200,7 @@ begin
       Zone := FirstZone;
       while Zone <> nil do
       begin
-        if ((Zone.BonusFlags and ArcadeBonusKindMask) <> 0)
-            and (Zone.NextBonusTick >= 0)
-            and (Zone.NextBonusTick <= ArcadeTickCount) then
+        if ((Zone.BonusFlags and ArcadeBonusKindMask) <> 0) and (Zone.NextBonusTick >= 0) and (Zone.NextBonusTick <= ArcadeTickCount) then
         begin
           Zone.NextBonusTick := -1;
           Count := 0;
@@ -218,11 +211,7 @@ begin
               Inc(Count);
             end;
           Bonus := TabItem.Create;
-          Bonus.SetBonus(
-              Kinds[RandomIntRange(0, Count - 1)],
-              (Zone.BonusFlags and ArcadeHiddenBonusFlag) <> 0,
-              Zone
-          );
+          Bonus.SetBonus(Kinds[RandomIntRange(0, Count - 1)], (Zone.BonusFlags and ArcadeHiddenBonusFlag) <> 0, Zone);
           Bonus.State.LongitudeDegrees := Zone.Longitude;
           Bonus.State.PolarAngleDegrees := Zone.PolarAngle;
           Bonus.State.BearingDegrees := RandomIntRange(0, 359);
@@ -260,8 +249,7 @@ begin
                       * RandomIntRange(
                           BonusRespawnSeconds[Bonus.SpawnZone.BonusRespawnClass * 2],
                           BonusRespawnSeconds[Bonus.SpawnZone.BonusRespawnClass * 2 + 1]);
-          if (Bonus.BonusKind = abkInvisibility)
-              and (TabShip(Ship).BonusTicks[Bonus.BonusKind] <= 0) then
+          if (Bonus.BonusKind = abkInvisibility) and (TabShip(Ship).BonusTicks[Bonus.BonusKind] <= 0) then
             TabShip(Ship).RevealTicks := 0;
           TabShip(Ship).BonusTicks[Bonus.BonusKind] := 20 * BonusDurationSeconds[Bonus.BonusKind];
           if PlayerArcadeShip = Ship then
@@ -285,10 +273,8 @@ begin
       Obj := NextObj;
       NextObj := NextObj.Next;
       if (Obj is TabItem) and ((Obj as TabItem).Item <> nil) then
-        if ((Obj as TabItem).Item.Weight <= GetPlayer.CargoFreeSpace)
-            and (PlayerArcadeShip.DistanceTo(Obj) < CargoPickupDistance) then
-          if GetPlayer.CalculateCargoHookPower(GetPlayer.GetCargoHook)
-              >= (Obj as TabItem).Item.Weight then
+        if ((Obj as TabItem).Item.Weight <= GetPlayer.CargoFreeSpace) and (PlayerArcadeShip.DistanceTo(Obj) < CargoPickupDistance) then
+          if GetPlayer.CalculateCargoHookPower(GetPlayer.GetCargoHook) >= (Obj as TabItem).Item.Weight then
           begin
             ArcadeBattleScreen.PickUpItem(Obj as TabItem);
             ArcadeBattleScreen.CancelCargoPickup;

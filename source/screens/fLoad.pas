@@ -76,6 +76,8 @@ procedure LoadPendingAssets(PendingLoads: TList);
 implementation
 
 uses
+  GameDiagnostics,
+  GameEvents,
   fPanelMain,
   EC_CacheGAI,
   GameInput,
@@ -123,9 +125,6 @@ begin
   GlobalCache.QueueNamedLoadIfMissing(PendingLoads, 'GI', 'Bm.FormMain3.2Ship3');
   GlobalCache.QueueNamedLoadIfMissing(PendingLoads, 'GI', 'Bm.FormMain2.2AnimCaption');
   GlobalCache.QueueNamedLoadIfMissing(PendingLoads, 'GI', 'Bm.FormMain3.2BG');
-  if ScreenLoadMode = 4 then
-  begin
-  end;
 end;
 
 procedure QueueSpaceLoadingAssets(PendingLoads: TList; Owner: TObjectGI);
@@ -148,7 +147,7 @@ begin
   Gate.QueueImageLoad(PendingLoads, Owner);
   Gate.Free;
   for I := 0 to High(SpaceImageTemplates) do
-    if TCGaiControlEC(SpaceImageTemplates[I].CacheControl) <> nil then
+    if SpaceImageTemplates[I].CacheControl <> nil then
       TCGaiControlEC(SpaceImageTemplates[I].CacheControl).QueueLoadIfMissing(PendingLoads);
   GlobalCache.QueueNamedLoadIfMissing(PendingLoads, 'GAI', PlayerStar.GetBackgroundImagePath(I));
   QueueConfiguredLoadingAssets(PendingLoads, 'Space');
@@ -178,11 +177,11 @@ begin
   I := 0;
   while PendingLoads.Count - 1 > I do
   begin
-    First := TCacheControlEC(PendingLoads[I]);
+    First := PendingLoads[I];
     J := I + 1;
     while PendingLoads.Count > J do
     begin
-      Second := TCacheControlEC(PendingLoads[J]);
+      Second := PendingLoads[J];
       if (First.ClassName = Second.ClassName) and (First.CacheKey = Second.CacheKey) then
       begin
         Second.Free;
@@ -206,8 +205,7 @@ begin
     QueueConfiguredLoadingAssets(PendingLoads, Path + '.' + Block.GetBlockNameByIndex(I));
   Count := Block.GetParamCount;
   for I := 0 to Count - 1 do
-    GlobalCache
-        .QueueNamedLoadIfMissing(PendingLoads, Block.GetParamName(I), Block.GetParamValue(I));
+    GlobalCache.QueueNamedLoadIfMissing(PendingLoads, Block.GetParamName(I), Block.GetParamValue(I));
 end;
 
 procedure LoadPendingAssets(PendingLoads: TList);
@@ -218,7 +216,7 @@ begin
   Count := PendingLoads.Count;
   for I := 0 to Count - 1 do
   begin
-    Control := TCacheControlEC(PendingLoads[I]);
+    Control := PendingLoads[I];
     Control.AcquireData;
     Control.Release;
     Control.Free;
@@ -236,11 +234,9 @@ begin
     Count := PendingLoads.Count;
     for I := 0 to Count - 1 do
     begin
-      while (Flag18 or ((Galaxy <> nil) and Galaxy.Destroying))
-          and not ExitScreenLoop
-          and not IsStopRequested do
+      while (Flag18 or ((Galaxy <> nil) and Galaxy.Destroying)) and not ExitScreenLoop and not IsStopRequested do
         SysUtils.Sleep(100);
-      Control := TCacheControlEC(PendingLoads[I]);
+      Control := PendingLoads[I];
       if not ExitScreenLoop and not IsStopRequested then
       begin
         Control.AcquireData;
@@ -261,7 +257,7 @@ begin
   PendingLoads := Loads;
   CompletedLoadCount := 0;
   TotalLoadCount := PendingLoads.Count;
-  SetPriority(1);
+  SetPriority(ThreadPriorityLowest);
   if StartImmediately then
     Start;
 end;
@@ -287,7 +283,7 @@ var
   Root: TObjectGI;
 begin
   inherited InitializeLayout;
-  AppendLogTextThreadSafe('fLoad... ');
+  LogGameMessage(gllDebug, 'ui', 'Initializing layout fLoad');
   ViewportRect := Classes.Rect(0, 0, GameScreenWidth, GameScreenHeight);
   Root := GetByName('');
   Root.SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
@@ -295,7 +291,6 @@ begin
   with Root.FindByNameRecursive('Intro') as TgaiGI do
     SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
   Root.FindByNameRecursive('Film').SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
-  AppendLogLineThreadSafe('ok');
   LoadPanel.InitializeLayout(Self);
 end;
 
@@ -515,22 +510,15 @@ begin
                   ExtractDigitsToIntW(ExtractDelimitedPartW(ImagePath, 1, ','))
               )
           );
-          SetPosition(
-              Classes.Point(
-                  (GameScreenWidth - ClientSize.X) div 2,
-                  (GameScreenHeight - ClientSize.Y) div 2
-              )
-          );
+          SetPosition(Classes.Point((GameScreenWidth - ClientSize.X) div 2, (GameScreenHeight - ClientSize.Y) div 2));
           if Block.CountParams('Sme') > 0 then
           begin
             ImagePath := Block.GetParam('Sme');
             if CountDelimitedPartsW(ImagePath, ',') > 1 then
               SetPosition(
                   Classes.Point(
-                      LocalPosition.X
-                          + ExtractSignedDigitsToIntW(ExtractDelimitedPartW(ImagePath, 0, ',')),
-                      LocalPosition.Y
-                          + ExtractSignedDigitsToIntW(ExtractDelimitedPartW(ImagePath, 1, ','))
+                      LocalPosition.X + ExtractSignedDigitsToIntW(ExtractDelimitedPartW(ImagePath, 0, ',')),
+                      LocalPosition.Y + ExtractSignedDigitsToIntW(ExtractDelimitedPartW(ImagePath, 1, ','))
                   )
               );
           end;

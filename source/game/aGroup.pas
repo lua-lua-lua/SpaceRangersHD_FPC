@@ -69,8 +69,7 @@ begin
   if Galaxy <> nil then
   begin
     CreatedTurn := Galaxy.CurrentTurn;
-    GenerationSeed :=
-        SeededRandomIntRange(100000, MaxInt, Galaxy.GenerationSeed * Galaxy.CurrentTurn);
+    GenerationSeed := SeededRandomIntRange(100000, MaxInt, Galaxy.GenerationSeed * Galaxy.CurrentTurn);
     RandomState := GenerationSeed;
   end;
   Ships := TList.Create;
@@ -120,7 +119,7 @@ begin
     else if Order.Kind = soLand then
     begin
       if Order.Target is TShip then
-        Buffer.AddDWord(Cardinal((Order.Target as TShip).Id) or OrderTargetShipFlag)
+        Buffer.AddDWord((Order.Target as TShip).Id or OrderTargetShipFlag)
       else
         Buffer.AddDWord((Order.Target as TPlanet).Id);
     end
@@ -173,7 +172,7 @@ var
 begin
   for I := 0 to Ships.Count - 1 do
   begin
-    Ships[I] := TObject(Galaxy.IdToShip(Cardinal(Ships[I]), True)) as TShip;
+    Ships[I] := Galaxy.IdToShip(Cardinal(Ships[I]), True) as TShip;
     Ship := Ships[I];
     Ship.LiberationGroup := Self;
   end;
@@ -186,14 +185,12 @@ begin
     else if Route[I].Kind = soLand then
     begin
       if Cardinal(Route[I].Target) and OrderTargetShipFlag = OrderTargetShipFlag then
-        Route[I].Target :=
-            TObject(Galaxy.IdToShip(Cardinal(Route[I].Target) and TaggedObjectIdMask, True))
-                as TShip
+        Route[I].Target := Galaxy.IdToShip(Cardinal(Route[I].Target) and TaggedObjectIdMask, True) as TShip
       else
-        Route[I].Target := TObject(Galaxy.IdToPlanet(Cardinal(Route[I].Target))) as TPlanet;
+        Route[I].Target := Galaxy.IdToPlanet(Cardinal(Route[I].Target)) as TPlanet;
     end
     else if Route[I].Kind = soFollowShip then
-      Route[I].Target := TObject(Galaxy.IdToShip(Cardinal(Route[I].Target), True)) as TShip
+      Route[I].Target := Galaxy.IdToShip(Cardinal(Route[I].Target), True) as TShip
     else
       Route[I].Target := nil;
   end;
@@ -237,9 +234,7 @@ var
 begin
   TargetStar := Galaxy.SelectStarForLiberationAttack(FindCentralMemberStar, sfCoalition);
   Attempts := 0;
-  while (TargetStar = nil)
-      or TargetStar.HasLiberationGroupOrder
-      or Galaxy.HasMilitaryBaseAssignedToStar(TargetStar) do
+  while (TargetStar = nil) or TargetStar.HasLiberationGroupOrder or Galaxy.HasMilitaryBaseAssignedToStar(TargetStar) do
   begin
     if Attempts > 10 then
     begin
@@ -270,7 +265,7 @@ var
   Text: WideString;
 begin
   Result := True;
-  if not (((TargetStar <> nil) and (AssemblyStar <> nil)) or SelectLiberationTarget) then
+  if ((TargetStar = nil) or (AssemblyStar = nil)) and not SelectLiberationTarget then
     Exit;
   SetLength(Route, 4);
   with Route[0] do
@@ -316,32 +311,14 @@ begin
             RandomState * (Galaxy.CurrentTurn mod 71)
         )
   else if TargetStar.ControlFaction = sfPirates then
-    Text :=
-        PickLocalizedTextVariant(
-            'GalaxyNews.Group.WarriorLiberator.CreatePirates',
-            RandomState * (Galaxy.CurrentTurn mod 71)
-        )
+    Text := PickLocalizedTextVariant('GalaxyNews.Group.WarriorLiberator.CreatePirates', RandomState * (Galaxy.CurrentTurn mod 71))
   else
-    Text :=
-        PickLocalizedTextVariant(
-            'GalaxyNews.Group.WarriorLiberator.Create',
-            RandomState * (Galaxy.CurrentTurn mod 71)
-        );
+    Text := PickLocalizedTextVariant('GalaxyNews.Group.WarriorLiberator.Create', RandomState * (Galaxy.CurrentTurn mod 71));
   ReplaceTextToken(Text, '<StarNormal>', AssemblyStar.Name, TextHighlightColorTag);
   ReplaceTextToken(Text, '<StarEnemy>', TargetStar.Name, TextHighlightColorTag);
-  ReplaceTextToken(
-      Text,
-      '<SectorNormal>',
-      AssemblyStar.Constellation.GetName,
-      TextHighlightColorTag
-  );
+  ReplaceTextToken(Text, '<SectorNormal>', AssemblyStar.Constellation.GetName, TextHighlightColorTag);
   ReplaceTextToken(Text, '<SectorEnemy>', TargetStar.Constellation.GetName, TextHighlightColorTag);
-  ReplaceTextToken(
-      Text,
-      '<Date>',
-      Galaxy.FormatTurnDate(Route[2].WaitUntilTurn),
-      TextHighlightColorTag
-  );
+  ReplaceTextToken(Text, '<Date>', Galaxy.FormatTurnDate(Route[2].WaitUntilTurn), TextHighlightColorTag);
   Galaxy.AddPlanetNews(gnLiberationGroupCreated, Text);
 end;
 
@@ -393,10 +370,7 @@ begin
     if Galaxy.CurrentTurn < Route[2].WaitUntilTurn then
       Result :=
           FormatText2(
-              PickLocalizedTextVariant(
-                  'ShipGreetings.Group.WarriorLiberatorBefore',
-                  NextRandomIntRange(100, 1000, RandomState)
-              ),
+              PickLocalizedTextVariant('ShipGreetings.Group.WarriorLiberatorBefore', NextRandomIntRange(100, 1000, RandomState)),
               TextHighlightColorTag,
               '<StarEnemy>',
               Star.Name,
@@ -406,10 +380,7 @@ begin
     else
       Result :=
           FormatText2(
-              PickLocalizedTextVariant(
-                  'ShipGreetings.Group.WarriorLiberatorAfter',
-                  NextRandomIntRange(100, 1000, RandomState)
-              ),
+              PickLocalizedTextVariant('ShipGreetings.Group.WarriorLiberatorAfter', NextRandomIntRange(100, 1000, RandomState)),
               TextHighlightColorTag,
               '<StarEnemy>',
               Star.Name,

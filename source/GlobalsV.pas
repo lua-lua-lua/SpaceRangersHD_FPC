@@ -77,14 +77,7 @@ type
   );
 
   {$Z4}
-  TGalaxyMapFontChoice = (
-      gmfRanger = 1,
-      gmfMini = 2,
-      gmfSmall = 3,
-      gmfSmallBold = 4,
-      gmfNormal = 5,
-      gmfNormalBold = 6
-  );
+  TGalaxyMapFontChoice = (gmfRanger = 1, gmfMini = 2, gmfSmall = 3, gmfSmallBold = 4, gmfNormal = 5, gmfNormalBold = 6);
 
   TGameScreenTable = array[TGameScreenId] of TObject;
 
@@ -397,15 +390,14 @@ function FormToId(Screen: TObject): TGameScreenId;
 var
   Id: TGameScreenId;
 begin
-  Id := screenNone;
-  repeat
+  for Id := Low(RegisteredScreens) to High(RegisteredScreens) do
+  begin
     if RegisteredScreens[Id] = Screen then
     begin
       Result := Id;
       Exit;
     end;
-    Inc(Id);
-  until Id = TGameScreenId(42);
+  end;
   raise Exception.Create('FormToId');
 end;
 
@@ -416,11 +408,7 @@ end;
 
 function IsSpaceBackdropScreen(ScreenId: TGameScreenId): Boolean;
 begin
-  Result :=
-      (ScreenId = screenStarMap)
-          or (ScreenId = screenGalaxy)
-          or (ScreenId = screenFilm)
-          or (ScreenId = screenTalk);
+  Result := (ScreenId = screenStarMap) or (ScreenId = screenGalaxy) or (ScreenId = screenFilm) or (ScreenId = screenTalk);
 end;
 
 function ScreenUsesCompositeLoadAssets(ScreenId: TGameScreenId): Boolean;
@@ -466,9 +454,7 @@ begin
     Result := True;
     Exit;
   end;
-  if (ScreenId = screenSettings)
-      and (SettingsReturnScreenId = screenGameMenu)
-      and IsSpaceBackdropScreen(GameMenuReturnScreenId) then
+  if (ScreenId = screenSettings) and (SettingsReturnScreenId = screenGameMenu) and IsSpaceBackdropScreen(GameMenuReturnScreenId) then
     Result := True;
 end;
 

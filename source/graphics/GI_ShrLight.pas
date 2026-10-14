@@ -37,11 +37,15 @@ type
 implementation
 
 uses
+  GameDiagnostics,
   GlobalsV,
   EC_Mem,
   GR_DX,
   GR_Main,
   SysUtils;
+
+var
+  HardwareShiftWarningLogged: Boolean = False;
 
 constructor TShrLightGI.Create(Owner: TObjectGI);
 begin
@@ -152,8 +156,11 @@ begin
       Exit
     else if LightShift = -2 then
       Alpha := 64
-    else
-      AppendLogLineThreadSafe('FShrLight=' + IntToStr(LightShift));
+    else if not HardwareShiftWarningLogged then
+    begin
+      HardwareShiftWarningLogged := True;
+      LogGameMessage(gllWarning, 'renderer', UnicodeFormat('Unsupported ShrLight shift=%d; config=%s', [LightShift, ConfigPath]));
+    end;
     if Kind = slkBuffer then
       DrawColoredRect(0, 0, GameScreenWidth, GameScreenHeight, 0, Alpha, True, @ClipRect)
     else if Kind = slkAll then
@@ -161,15 +168,11 @@ begin
   end
   else if Kind = slkBuffer then
     Ex_OKGR_ShrLightMask_16(
-        AddPointerOffset(
-            ScreenRenderBuffer.GetPixels,
-            ScreenRenderBuffer.PitchBytes * ClipRect.Top + ClipRect.Left * 2
-        ),
+        AddPointerOffset(ScreenRenderBuffer.GetPixels, ScreenRenderBuffer.PitchBytes * ClipRect.Top + ClipRect.Left * 2),
         ScreenRenderBuffer.PitchBytes,
         AddPointerOffset(
             LightBuffer.GetPixels,
-            (ClipRect.Top - HitTestBounds.Top) * LightBuffer.PitchBytes
-                + (ClipRect.Left - HitTestBounds.Left)
+            (ClipRect.Top - HitTestBounds.Top) * LightBuffer.PitchBytes + (ClipRect.Left - HitTestBounds.Left)
         ),
         LightBuffer.PitchBytes,
         ClipRect.Right - ClipRect.Left,

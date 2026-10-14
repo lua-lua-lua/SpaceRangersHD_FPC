@@ -11,6 +11,9 @@ uses
   GI_MessageLoop,
   Types;
 
+const
+  cbHorizontal = 1;
+
 type
 
   TCountBarGI = class;
@@ -63,7 +66,7 @@ constructor TCountBarGI.Create(Owner: TObjectGI);
 begin
   inherited Create(Owner);
   TouchInteraction := tiDrag;
-  Orientation := 1;
+  Orientation := cbHorizontal;
   Minimum := 0;
   Maximum := 100;
   Position := 0;
@@ -184,7 +187,7 @@ var
   TrackWidth, ThumbLeft, ThumbRight: Integer;
   ThumbSize, IncreaseSize, DecreaseSize: TPoint;
 begin
-  if Orientation = 1 then
+  if Orientation = cbHorizontal then
   begin
     ThumbSize := ThumbButton.GetMaxStateImageSize;
     DecreaseSize := DecreaseButton.GetMaxStateImageSize;
@@ -194,10 +197,7 @@ begin
       ThumbLeft := IncreaseSize.X
     else
       ThumbLeft :=
-          Integer(Round(TrackWidth * (Position - Minimum) / (Maximum - Minimum)))
-              - ThumbSize.X div 2
-              + IncreaseSize.X
-              + ThumbSize.X div 2;
+          Integer(Round(TrackWidth * (Position - Minimum) / (Maximum - Minimum))) - ThumbSize.X div 2 + IncreaseSize.X + ThumbSize.X div 2;
     ThumbRight := ThumbLeft + ThumbSize.X;
     DecreaseButton.SetPosition(Classes.Point(0, 0));
     IncreaseButton.SetPosition(Classes.Point(ClientSize.X - IncreaseSize.X, 0));
@@ -209,18 +209,14 @@ begin
     DecreaseButton.SetSize(DecreaseSize);
     IncreaseButton.SetSize(IncreaseSize);
     BeforeThumbImage.SetPosition(Classes.Point(DecreaseSize.X, 0));
-    BeforeThumbImage
-        .SetSize(Classes.Point(ThumbLeft - DecreaseSize.X, AfterThumbImage.GetContentSize.Y));
+    BeforeThumbImage.SetSize(Classes.Point(ThumbLeft - DecreaseSize.X, AfterThumbImage.GetContentSize.Y));
     AfterThumbImage.SetPosition(Classes.Point(ThumbRight, 0));
-    AfterThumbImage.SetSize(
-        Classes.Point(ClientSize.X - ThumbRight - IncreaseSize.X, BeforeThumbImage.GetContentSize.Y)
-    );
+    AfterThumbImage.SetSize(Classes.Point(ClientSize.X - ThumbRight - IncreaseSize.X, BeforeThumbImage.GetContentSize.Y));
     ThumbButton.SetPosition(Classes.Point(ThumbLeft, 0));
     ThumbButton.SetSize(Classes.Point(ThumbRight - ThumbLeft, ThumbSize.Y));
     AfterThumbImage.SetImageKindX(ikxRightFill);
     BeforeThumbImage.SetImageKindX(ikxLeftFill);
-    MarkerImage
-        .SetPosition(AddPoints(ThumbButton.LocalPosition, HalfPoint(ThumbButton.ClientSize)));
+    MarkerImage.SetPosition(AddPoints(ThumbButton.LocalPosition, HalfPoint(ThumbButton.ClientSize)));
     if DecreaseButton.Kind = gbkDisable then
       DecreaseButton.SetDisabled(Position <= Minimum);
     if IncreaseButton.Kind = gbkDisable then
@@ -269,7 +265,7 @@ var
 begin
   inherited ProcessMouseMove(KeyState, Point);
   Point := ToLocalPoint(Point);
-  if ThumbButton.Down and (Orientation = 1) then
+  if ThumbButton.Down and (Orientation = cbHorizontal) then
   begin
     TrackStart := DecreaseButton.GetMaxStateImageSize.X + ThumbButton.GetMaxStateImageSize.X div 2;
     TrackEnd :=
@@ -279,10 +275,7 @@ begin
     if Maximum - Minimum = 0 then
       SetPosition(Minimum)
     else
-      SetPosition(
-          Integer(Round((Point.X - TrackStart) / (TrackEnd - TrackStart) * (Maximum - Minimum)))
-              + Minimum
-      );
+      SetPosition(Integer(Round((Point.X - TrackStart) / (TrackEnd - TrackStart) * (Maximum - Minimum))) + Minimum);
   end;
 end;
 
@@ -304,23 +297,19 @@ begin
   if Active then
     MessageLoop.SetFocusedControl(Self);
   Point := ToLocalPoint(Point);
-  if Orientation = 1 then
+  if Orientation = cbHorizontal then
   begin
     TrackStart := DecreaseButton.GetMaxStateImageSize.X + ThumbButton.GetMaxStateImageSize.X div 2;
     TrackEnd :=
         ClientSize.X
             - IncreaseButton.GetMaxStateImageSize.X
             - (ThumbButton.GetMaxStateImageSize.X - ThumbButton.GetMaxStateImageSize.X div 2);
-    if (Point.X >= DecreaseButton.GetMaxStateImageSize.X)
-        and (Point.X <= ClientSize.X - IncreaseButton.GetMaxStateImageSize.X) then
+    if (Point.X >= DecreaseButton.GetMaxStateImageSize.X) and (Point.X <= ClientSize.X - IncreaseButton.GetMaxStateImageSize.X) then
     begin
       if Maximum - Minimum = 0 then
         SetPosition(Minimum)
       else
-        SetPosition(
-            Integer(Round((Point.X - TrackStart) / (TrackEnd - TrackStart) * (Maximum - Minimum)))
-                + Minimum
-        );
+        SetPosition(Integer(Round((Point.X - TrackStart) / (TrackEnd - TrackStart) * (Maximum - Minimum))) + Minimum);
       ThumbButton.SetDown(True);
     end;
   end;

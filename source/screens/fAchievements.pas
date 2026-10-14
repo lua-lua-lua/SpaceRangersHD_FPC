@@ -7,7 +7,7 @@ interface
 uses
   GI_MessageLoop,
   GI_Image,
-  SimpleSteamApi,
+  Achievements,
   Types;
 
 type
@@ -35,24 +35,18 @@ type
     procedure RebuildAchievementList;
     procedure BuildRow(Owner: TObjectGI);
     procedure RefreshRowBackground(Index: Integer);
-    procedure BuildProgressBars(
-        Owner: TObjectGI;
-        MinValue: Integer;
-        MaxValue: Integer;
-        StoredValue: Integer;
-        CurrentValue: Integer
-    );
+    procedure BuildProgressBars(Owner: TObjectGI; MinValue: Integer; MaxValue: Integer; StoredValue: Integer; CurrentValue: Integer);
   end;
 
 implementation
 
 uses
+  GameDiagnostics,
   GI_Main,
   GameInput,
   Classes,
   SysUtils,
   Math,
-  Achievements,
   EC_BlockPar,
   GI_GraphBuf,
   GI_GraphButton,
@@ -78,21 +72,15 @@ end;
 procedure TfAchievements.InitializeLayout;
 begin
   inherited InitializeLayout;
-  AppendLogTextThreadSafe('fAchievements... ');
+  LogGameMessage(gllDebug, 'ui', 'Initializing layout fAchievements');
   ViewportRect := Classes.Rect(0, 0, GameScreenWidth, GameScreenHeight);
   with GetByName('') do
   begin
     SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
     FindByNameRecursive('BGBuf').SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
     with FindByNameRecursive('MainPanel') do
-      SetPosition(
-          Classes.Point(
-              (GameScreenWidth - ClientSize.X) div 2,
-              (GameScreenHeight - ClientSize.Y) div 2
-          )
-      );
+      SetPosition(Classes.Point((GameScreenWidth - ClientSize.X) div 2, (GameScreenHeight - ClientSize.Y) div 2));
   end;
-  AppendLogLineThreadSafe('ok');
   GetByName('MainPanel').KeyDownCallback := KeyDown;
   (GetByName('ButClose') as TGraphButtonGI).UpCallback := CloseClicked;
 end;
@@ -292,10 +280,7 @@ begin
       SetFontName(SmallFontName);
       SetTextAlignX(taxRight);
       SetTextAlignY(tayCenterEx);
-      SetText(
-          LanguageDataConfig.GetParamByPathOrMarker('Achievements.Achieved')
-              + FormatUnixDateTime(Rows[Index].Data.Date)
-      );
+      SetText(LanguageDataConfig.GetParamByPathOrMarker('Achievements.Achieved') + FormatUnixDateTime(Rows[Index].Data.Date));
       SetTextColor(CurrentPixelFormat.PackRgbBytes(0, 0, 0));
     end;
   with TImageGI.Create(Owner) do
@@ -324,10 +309,7 @@ procedure TfAchievements.SelectMusic;
 begin
 end;
 
-procedure TfAchievements.BuildProgressBars(
-    Owner: TObjectGI;
-    MinValue, MaxValue, StoredValue, CurrentValue: Integer
-);
+procedure TfAchievements.BuildProgressBars(Owner: TObjectGI; MinValue, MaxValue, StoredValue, CurrentValue: Integer);
 var
   Bar: TCountBarGI;
 begin

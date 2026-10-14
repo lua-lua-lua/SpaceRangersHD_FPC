@@ -220,11 +220,7 @@ var
   Target: TPoint;
   Intersection: TRect;
 begin
-  MessageLoop.UpdateRects.AddScreenClippedRect(
-      HitTestBounds,
-      Parent.ToAbsolutePoint(LocalPosition),
-      Parent.ToAbsolutePoint(TargetPoint)
-  );
+  MessageLoop.UpdateRects.AddScreenClippedRect(HitTestBounds, Parent.ToAbsolutePoint(LocalPosition), Parent.ToAbsolutePoint(TargetPoint));
   Target := Parent.ToAbsolutePoint(TargetPoint);
   Rect.Left := Target.X - 32;
   Rect.Right := Target.X + 32;
@@ -281,9 +277,7 @@ begin
   else
   begin
     Distance := OriginalLength;
-    LengthScale :=
-        Sqrt(Sqr(TargetPoint.X - LocalPosition.X) + Sqr(TargetPoint.Y - LocalPosition.Y))
-            / OriginalLength;
+    LengthScale := Sqrt(Sqr(TargetPoint.X - LocalPosition.X) + Sqr(TargetPoint.Y - LocalPosition.Y)) / OriginalLength;
     UpdateHitTestBounds;
     Particle := FirstParticle;
     while Particle <> nil do
@@ -495,10 +489,7 @@ begin
         X := AbsolutePosition.X + Trunc(PX * Cosine + PY * Sine);
         Y := AbsolutePosition.Y + Trunc(PX * Sine - PY * Cosine);
       end;
-      if (X >= ClipRect.Left)
-          and (X < ClipRect.Right)
-          and (Y >= ClipRect.Top)
-          and (Y < ClipRect.Bottom) then
+      if (X >= ClipRect.Left) and (X < ClipRect.Right) and (Y >= ClipRect.Top) and (Y < ClipRect.Bottom) then
         ScreenRenderBuffer.BlendPixel16(X, Y, Particle.Color, Particle.Alpha);
       Particle := Particle.Next;
     end;
@@ -523,7 +514,7 @@ begin
     if Block.CountBlocks(Text) <> 0 then
     begin
       PaletteBlock := Block.GetBlockByPath(Text);
-      for ColorIndex := 0 to 0 do
+      for ColorIndex := Low(TDesintegratorPalette) to High(TDesintegratorPalette) do
         if PaletteBlock.CountParams('Color' + IntToStr(ColorIndex)) > 0 then
         begin
           Text := PaletteBlock.GetParam('Color' + IntToStr(ColorIndex));

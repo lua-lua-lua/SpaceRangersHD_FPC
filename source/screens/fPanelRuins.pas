@@ -33,6 +33,7 @@ type
 implementation
 
 uses
+  GameDiagnostics,
   aRanger,
   fEquipmentShop,
   fGalaxy2,
@@ -72,12 +73,9 @@ end;
 procedure TfPanelRuins.InitializeLayout(Screen: TMessageLoopGI);
 begin
   Self.Screen := Screen;
-  AppendLogTextThreadSafe('fPanelRuins... ');
+  LogGameMessage(gllDebug, 'ui', 'Initializing layout fPanelRuins');
   with Self.Screen.GetByName('PanelRuins') do
-    SetPosition(
-        Classes.Point(LocalPosition.X + ExtraScreenWidth, LocalPosition.Y + ExtraScreenHeight)
-    );
-  AppendLogLineThreadSafe('ok');
+    SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth, LocalPosition.Y + ExtraScreenHeight));
   (Self.Screen.GetByName('PR_Gov') as TGraphButtonGI).UpCallback := ServicesClicked;
   (Self.Screen.GetByName('PR_Shop') as TGraphButtonGI).UpCallback := EquipmentShopClicked;
   (Self.Screen.GetByName('PR_Goods') as TGraphButtonGI).UpCallback := GoodsShopClicked;
@@ -132,11 +130,7 @@ begin
   if HasPendingScriptRequests then
     Exit;
   if (GetPlayer.DockedTo.TypeId = rstBusinessCenter) and (GetPlayer.DebtDefaultCount > 1) then
-    ShowMessageBoxGI(
-        Screen,
-        LocalizedColorText('FormRuins.BK.DebtNoAccess'),
-        mbgCancel or mbgWarning
-    )
+    ShowMessageBoxGI(Screen, LocalizedColorText('FormRuins.BK.DebtNoAccess'), mbgCancel or mbgWarning)
   else
   begin
     RequestedScreenId := screenEquipmentShop;
@@ -157,11 +151,7 @@ begin
   if HasPendingScriptRequests then
     Exit;
   if (GetPlayer.DockedTo.TypeId = rstBusinessCenter) and (GetPlayer.DebtDefaultCount > 1) then
-    ShowMessageBoxGI(
-        Screen,
-        LocalizedColorText('FormRuins.BK.DebtNoAccess'),
-        mbgCancel or mbgWarning
-    )
+    ShowMessageBoxGI(Screen, LocalizedColorText('FormRuins.BK.DebtNoAccess'), mbgCancel or mbgWarning)
   else
   begin
     RequestedScreenId := screenGoodsShop;
@@ -182,11 +172,7 @@ begin
   if HasPendingScriptRequests then
     Exit;
   if (GetPlayer.DockedTo.TypeId = rstBusinessCenter) and (GetPlayer.DebtDefaultCount > 1) then
-    ShowMessageBoxGI(
-        Screen,
-        LocalizedColorText('FormRuins.BK.DebtNoAccess'),
-        mbgCancel or mbgWarning
-    )
+    ShowMessageBoxGI(Screen, LocalizedColorText('FormRuins.BK.DebtNoAccess'), mbgCancel or mbgWarning)
   else
   begin
     RequestedScreenId := screenInfo;

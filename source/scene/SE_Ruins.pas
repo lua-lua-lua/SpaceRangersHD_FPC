@@ -14,6 +14,13 @@ uses
   GI_MessageLoop,
   SE_Space;
 
+const
+  rsInitial = 0;
+  rsIdle = 1;
+  rsDisappearing = 2;
+  rsAppearing = 3;
+  rsPlayingDisappearance = 4;
+
 type
 
   TRuinsSE = class;
@@ -78,10 +85,8 @@ begin
     inherited Create(GraphKey, UnusedPosition);
     AlphaLimit := 255;
   end;
-  HasTransitionImages :=
-      CacheDataRoot.FileExistsByPath(ImagePath + 'To')
-          and CacheDataRoot.FileExistsByPath(ImagePath + 'From');
-  State := 0;
+  HasTransitionImages := CacheDataRoot.FileExistsByPath(ImagePath + 'To') and CacheDataRoot.FileExistsByPath(ImagePath + 'From');
+  State := rsInitial;
   Alpha := 255;
 end;
 
@@ -89,27 +94,23 @@ procedure TRuinsSE.AttachToSpace(ASpace: TSpaceSE);
 begin
   if not IsAttachedToSpace then
   begin
-    ConfigureLoopSound(
-        'Ruins.' + ExtractDelimitedPartW(ImagePath, CountDelimitedPartsW(ImagePath, '.') - 1, '.')
-    );
-    ConfigureRandomSound(
-        'Ruins.' + ExtractDelimitedPartW(ImagePath, CountDelimitedPartsW(ImagePath, '.') - 1, '.')
-    );
+    ConfigureLoopSound('Ruins.' + ExtractDelimitedPartW(ImagePath, CountDelimitedPartsW(ImagePath, '.') - 1, '.'));
+    ConfigureRandomSound('Ruins.' + ExtractDelimitedPartW(ImagePath, CountDelimitedPartsW(ImagePath, '.') - 1, '.'));
     inherited AttachToSpace(ASpace);
     if AnimShipFull or (CurrentScreenId = screenArcadeBattle) then
     begin
       Animation := TgaiGI.Create(Space.MapPanel);
-      if State = 3 then
+      if State = rsAppearing then
       begin
         Animation.SetImagePath(ImagePath + 'From');
         Animation.CycleCompleteCallback := AnimationCycleComplete;
         FrameIndex := 0;
       end
-      else if State = 2 then
+      else if State = rsDisappearing then
       begin
         Animation.SetImagePath(ImagePath + 'To');
         Animation.CycleCompleteCallback := AnimationCycleComplete;
-        State := 4;
+        State := rsPlayingDisappearance;
         FrameIndex := 0;
       end
       else
@@ -121,7 +122,7 @@ begin
       Animation.SetPositionModeW(True);
       Animation.SequenceIndex := 0;
       Animation.UpdateAutoGeometry;
-      if not (State in [2, 3]) then
+      if not (State in [rsDisappearing, rsAppearing]) then
         FrameIndex := Random(Animation.SequenceFrameCount - 1);
       Animation.SetSequenceFrame(FrameIndex);
       Animation.RestartPlayback;
@@ -139,12 +140,12 @@ begin
       StaticImage.SetPosition(TruncatePointF(Position));
       StaticImage.SetPositionModeW(True);
       StaticImage.SetAlpha(Math.Min(Alpha, AlphaLimit) shr Space.AlphaShift);
-      if State = 3 then
+      if State = rsAppearing then
       begin
         FadeTimer := Space.Screen.ScheduleCallbackTimer(20, 20, AdvanceFade);
         SetAlpha(0);
       end
-      else if State = 2 then
+      else if State = rsDisappearing then
       begin
         FadeTimer := Space.Screen.ScheduleCallbackTimer(20, 20, AdvanceFade);
         SetAlpha(255);
@@ -155,9 +156,7 @@ begin
     MinimapImage := TImageGI.Create(SpaceObjectUiLoop.ContentPanel);
     MinimapImage.SetPositionModeW(True);
     MinimapImage.SetDepthByName(DepthExpression);
-    MinimapImage.SetPosition(
-        TruncatePointF(MakePointF(Position.X * Space.MinimapScale, Position.Y * Space.MinimapScale))
-    );
+    MinimapImage.SetPosition(TruncatePointF(MakePointF(Position.X * Space.MinimapScale, Position.Y * Space.MinimapScale)));
     MinimapImage.SetImagePath(MinimapImagePath);
     MinimapImage.SetSize(MinimapImage.GetContentSize);
     MinimapImage.SetOrigin(HalfPoint(MinimapImage.ClientSize));
@@ -206,12 +205,12 @@ begin
   State := Value;
   if Animation <> nil then
   begin
-    if not (State in [0, 1]) then
+    if not (State in [rsInitial, rsIdle]) then
       Animation.CycleCompleteCallback := AnimationCycleComplete;
   end
   else if StaticImage <> nil then
   begin
-    if State in [2, 3] then
+    if State in [rsDisappearing, rsAppearing] then
       FadeTimer := Space.Screen.ScheduleCallbackTimer(20, 20, AdvanceFade)
     else if FadeTimer <> nil then
     begin
@@ -223,16 +222,16 @@ end;
 
 procedure TRuinsSE.AnimationCycleComplete(Sender: TObjectGI);
 begin
-  if State = 2 then
+  if State = rsDisappearing then
   begin
     Animation.SetImagePath(ImagePath + 'To');
     Animation.SequenceIndex := 0;
     Animation.UpdateAutoGeometry;
     Animation.SetSequenceFrame(0);
     Animation.RestartPlayback;
-    State := 4;
+    State := rsPlayingDisappearance;
   end
-  else if (State = 3) or (State = 1) then
+  else if (State = rsAppearing) or (State = rsIdle) then
   begin
     Animation.SetImagePath(ImagePath);
     Animation.SequenceIndex := 0;
@@ -240,7 +239,7 @@ begin
     Animation.SetSequenceFrame(0);
     Animation.RestartPlayback;
     Animation.CycleCompleteCallback := nil;
-    State := 1;
+    State := rsIdle;
   end
   else
   begin
@@ -251,12 +250,12 @@ end;
 
 procedure TRuinsSE.AdvanceFade(Timer: PCallbackTimerGI; UserData: PtrInt);
 begin
-  if State = 2 then
+  if State = rsDisappearing then
   begin
     SetAlpha(Math.Max(0, GetAlpha - 5));
     if GetAlpha = 0 then
     begin
-      State := 1;
+      State := rsIdle;
       DetachFromSpace;
     end;
   end
@@ -265,7 +264,7 @@ begin
     SetAlpha(Math.Min(255, GetAlpha + 5));
     if GetAlpha = 255 then
     begin
-      State := 1;
+      State := rsIdle;
       if FadeTimer <> nil then
       begin
         Space.Screen.CancelCallbackTimer(FadeTimer);
@@ -284,11 +283,7 @@ begin
       StaticImage.SetPosition(TruncatePointF(APosition));
     if Animation <> nil then
       Animation.SetPosition(TruncatePointF(APosition));
-    MinimapImage.SetPosition(
-        TruncatePointF(
-            MakePointF(APosition.X * Space.MinimapScale, APosition.Y * Space.MinimapScale)
-        )
-    );
+    MinimapImage.SetPosition(TruncatePointF(MakePointF(APosition.X * Space.MinimapScale, APosition.Y * Space.MinimapScale)));
   end;
 end;
 
@@ -369,21 +364,12 @@ var
   begin
     if CountDelimitedPartsW(PointText, ',') < 2 then
       raise Exception.Create('GetPointGI. tstr=' + PointText);
-    Result :=
-        Classes.Point(
-            StrToInt(ExtractDelimitedPartW(PointText, 0, ',')),
-            StrToInt(ExtractDelimitedPartW(PointText, 1, ','))
-        );
+    Result := Classes.Point(StrToInt(ExtractDelimitedPartW(PointText, 0, ',')), StrToInt(ExtractDelimitedPartW(PointText, 1, ',')));
   end;
 
   function ParseRuinsEnabled(Name: WideString): Boolean;
   begin
-    if (Name = 'Yes')
-        or (Name = 'yes')
-        or (Name = 'True')
-        or (Name = 'true')
-        or (Name = 'TRUE')
-        or (Name = '1') then
+    if (Name = 'Yes') or (Name = 'yes') or (Name = 'True') or (Name = 'true') or (Name = 'TRUE') or (Name = '1') then
       Result := True
     else
       Result := False;
@@ -394,9 +380,7 @@ begin
   ImagePath := Block.GetParam('Image');
   StaticImagePath := Block.GetParam('ImageI');
   MinimapImagePath := Block.GetParam('ImageMap');
-  HasTransitionImages :=
-      CacheDataRoot.FileExistsByPath(ImagePath + 'To')
-          and CacheDataRoot.FileExistsByPath(ImagePath + 'From');
+  HasTransitionImages := CacheDataRoot.FileExistsByPath(ImagePath + 'To') and CacheDataRoot.FileExistsByPath(ImagePath + 'From');
   if Block.CountParams('PanelPartnerImage') > 0 then
     PanelPartnerImage := Block.GetParam('PanelPartnerImage')
   else
@@ -410,8 +394,7 @@ begin
   begin
     if Block.CountParams('WeaponPort' + IntToWideString(Index)) <= 0 then
       Break;
-    WeaponPorts[Index] :=
-        PointToPointF(ParseRuinsPoint(Block.GetParam('WeaponPort' + IntToWideString(Index))));
+    WeaponPorts[Index] := PointToPointF(ParseRuinsPoint(Block.GetParam('WeaponPort' + IntToWideString(Index))));
     Inc(WeaponPortCount);
   end;
 end;

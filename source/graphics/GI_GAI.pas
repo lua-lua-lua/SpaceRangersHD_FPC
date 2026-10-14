@@ -101,6 +101,7 @@ procedure LoadGaiFrameToGraphBuf(const Path: WideString; GraphBuf: TGraphBufGR; 
 implementation
 
 uses
+  GameDiagnostics,
   GR_Sound,
   EC_Struct,
   Direct3D9,
@@ -407,34 +408,12 @@ begin
     Last := ExtractDigitsToIntW(ExtractDelimitedPartW(Part, 2, ',-'));
     RangeCount := Abs(First - Last) + 1;
     Inc(SequenceFrameCount, RangeCount);
-    SequenceFrameIndexTable :=
-        ReAllocFromHeapREC(
-            GaiFrameHeap,
-            SequenceFrameIndexTable,
-            SequenceFrameCount * SizeOf(Integer)
-        );
-    SequenceFrameDelayTable :=
-        ReAllocFromHeapREC(
-            GaiFrameHeap,
-            SequenceFrameDelayTable,
-            SequenceFrameCount * SizeOf(Integer)
-        );
+    SequenceFrameIndexTable := ReAllocFromHeapREC(GaiFrameHeap, SequenceFrameIndexTable, SequenceFrameCount * SizeOf(Integer));
+    SequenceFrameDelayTable := ReAllocFromHeapREC(GaiFrameHeap, SequenceFrameDelayTable, SequenceFrameCount * SizeOf(Integer));
     for Offset := 0 to RangeCount - 1 do
     begin
-      WriteInt32EC(
-          AddPointerOffset(
-              SequenceFrameIndexTable,
-              (SequenceFrameCount - RangeCount + Offset) * SizeOf(Integer)
-          ),
-          First
-      );
-      WriteInt32EC(
-          AddPointerOffset(
-              SequenceFrameDelayTable,
-              (SequenceFrameCount - RangeCount + Offset) * SizeOf(Integer)
-          ),
-          Delay
-      );
+      WriteInt32EC(AddPointerOffset(SequenceFrameIndexTable, (SequenceFrameCount - RangeCount + Offset) * SizeOf(Integer)), First);
+      WriteInt32EC(AddPointerOffset(SequenceFrameDelayTable, (SequenceFrameCount - RangeCount + Offset) * SizeOf(Integer)), Delay);
       if First < Last then
         Inc(First)
       else
@@ -472,22 +451,17 @@ end;
 
 function TgaiGI.GetSequenceFrameSourceIndex(FrameInSequence: Integer): Integer;
 begin
-  Result :=
-      ReadIntegerEC(AddPointerOffset(SequenceFrameIndexTable, FrameInSequence * SizeOf(Integer)));
+  Result := ReadIntegerEC(AddPointerOffset(SequenceFrameIndexTable, FrameInSequence * SizeOf(Integer)));
 end;
 
 procedure TgaiGI.SetFrameDelay(FrameInSequence, DelayMs: Integer);
 begin
-  WriteInt32EC(
-      AddPointerOffset(SequenceFrameDelayTable, FrameInSequence * SizeOf(Integer)),
-      DelayMs
-  );
+  WriteInt32EC(AddPointerOffset(SequenceFrameDelayTable, FrameInSequence * SizeOf(Integer)), DelayMs);
 end;
 
 function TgaiGI.GetFrameDelay(FrameInSequence: Integer): Integer;
 begin
-  Result :=
-      ReadIntegerEC(AddPointerOffset(SequenceFrameDelayTable, FrameInSequence * SizeOf(Integer)));
+  Result := ReadIntegerEC(AddPointerOffset(SequenceFrameDelayTable, FrameInSequence * SizeOf(Integer)));
 end;
 
 function TgaiGI.HitTestPixel(Point: TPoint): Boolean;
@@ -605,11 +579,7 @@ begin
     begin
       Exit;
     end;
-    Pixels :=
-        AddPointerOffset(
-            @Pixel,
-            -(ScreenRenderBuffer.PitchBytes * Point.Y + Point.X * SizeOf(Word))
-        );
+    Pixels := AddPointerOffset(@Pixel, -(ScreenRenderBuffer.PitchBytes * Point.Y + Point.X * SizeOf(Word)));
     Buffer := TGraphBufGR.Create(False);
     Buffer.AttachPixels(1, 1, ScreenRenderBuffer.PitchBytes, Pixels);
     if Image <> nil then
@@ -623,14 +593,7 @@ begin
         while X < Right do
         begin
           Frame := Image.LoadFrameGi(GetSequenceFrameSourceIndex(SequenceFrame));
-          Frame.DrawToGraphBuf(
-              Buffer,
-              X + Frame.GetBoundsRect.Left - Bounds.Left,
-              Y + Frame.GetBoundsRect.Top - Bounds.Top,
-              Clip,
-              0,
-              255
-          );
+          Frame.DrawToGraphBuf(Buffer, X + Frame.GetBoundsRect.Left - Bounds.Left, Y + Frame.GetBoundsRect.Top - Bounds.Top, Clip, 0, 255);
           Inc(X, Width);
         end;
         Inc(Y, Height);
@@ -648,14 +611,7 @@ begin
             X := Left;
             while X < Right do
             begin
-              DrawAlphaGraphBuffer16Clipped(
-                  Buffer.GetPixels,
-                  Buffer.PitchBytes,
-                  X,
-                  Y,
-                  CachedPlaybackGraphBuf,
-                  Clip
-              );
+              DrawAlphaGraphBuffer16Clipped(Buffer.GetPixels, Buffer.PitchBytes, X, Y, CachedPlaybackGraphBuf, Clip);
               Inc(X, Width);
             end;
             Inc(Y, Height);
@@ -791,22 +747,12 @@ begin
         begin
           MainImageCache.Release;
           SequenceFrameCount := 0;
-          AppendLogLineThreadSafe('TgaiGI.AfterLoad. Anim not found.');
+          LogGameMessage(gllWarning, 'resources', 'Animation not found: ' + GetImagePath + '; sequence=' + IntToStr(SequenceIndex));
           Exit;
         end;
         SequenceFrameCount := Image.GetSequenceFrameCount(SequenceIndex);
-        SequenceFrameIndexTable :=
-            ReAllocFromHeapREC(
-                GaiFrameHeap,
-                SequenceFrameIndexTable,
-                SequenceFrameCount * SizeOf(Integer)
-            );
-        SequenceFrameDelayTable :=
-            ReAllocFromHeapREC(
-                GaiFrameHeap,
-                SequenceFrameDelayTable,
-                SequenceFrameCount * SizeOf(Integer)
-            );
+        SequenceFrameIndexTable := ReAllocFromHeapREC(GaiFrameHeap, SequenceFrameIndexTable, SequenceFrameCount * SizeOf(Integer));
+        SequenceFrameDelayTable := ReAllocFromHeapREC(GaiFrameHeap, SequenceFrameDelayTable, SequenceFrameCount * SizeOf(Integer));
         Image.FillSequenceFrameIndexTable(SequenceIndex, SequenceFrameIndexTable, SizeOf(Integer));
         Image.FillSequenceFrameDelayTable(SequenceIndex, SequenceFrameDelayTable, SizeOf(Integer));
       finally
@@ -888,14 +834,9 @@ var
 begin
   if (not Active) or HardwareRenderingEnabled then
     Exit;
-  if (not SkipImageUpdateRect)
-      and (FirstFrameImageCache <> nil)
-      and (not FirstFrameOnly)
-      and UsesPlaybackBuffer then
+  if (not SkipImageUpdateRect) and (FirstFrameImageCache <> nil) and (not FirstFrameOnly) and UsesPlaybackBuffer then
   begin
-    if (CachedPlaybackGraphBuf = nil)
-        or (LastCachedFrameIndex < 0)
-        or (SequenceFrame < LastCachedFrameIndex) then
+    if (CachedPlaybackGraphBuf = nil) or (LastCachedFrameIndex < 0) or (SequenceFrame < LastCachedFrameIndex) then
     begin
       inherited Invalidate;
       Exit;
@@ -1048,10 +989,7 @@ begin
     Exit;
   if (AutoFrameTimer = nil) and (not StopPlaybackRequested) then
     RestartPlayback;
-  if (MainImageCache.CacheKey = '')
-      and ((FirstFrameImageCache = nil)
-          or (FirstFrameImageCache.CacheKey = '')
-          or (not FirstFrameOnly)) then
+  if (MainImageCache.CacheKey = '') and ((FirstFrameImageCache = nil) or (FirstFrameImageCache.CacheKey = '') or (not FirstFrameOnly)) then
     Exit;
   Image := nil;
   First := nil;
@@ -1169,16 +1107,7 @@ begin
             X := Left;
             while X < Right do
             begin
-              DrawTexture(
-                  Texture,
-                  FrameOrigin.X + X,
-                  FrameOrigin.Y + Y,
-                  Alpha,
-                  RgbWhite,
-                  @ClipRect,
-                  False,
-                  HardwareMirrorHorizontal
-              );
+              DrawTexture(Texture, FrameOrigin.X + X, FrameOrigin.Y + Y, Alpha, RgbWhite, @ClipRect, False, HardwareMirrorHorizontal);
               Inc(X, Width);
             end;
             Inc(Y, Height);
@@ -1224,16 +1153,7 @@ begin
             begin
               Texture := Image.GetOrCreateFrameSurface(GetSequenceFrameSourceIndex(SequenceFrame));
               FrameOrigin := Image.GetFrameOrigin(GetSequenceFrameSourceIndex(SequenceFrame));
-              DrawTexture(
-                  Texture,
-                  FrameOrigin.X + X,
-                  FrameOrigin.Y + Y,
-                  Alpha,
-                  RgbWhite,
-                  @ClipRect,
-                  False,
-                  HardwareMirrorHorizontal
-              );
+              DrawTexture(Texture, FrameOrigin.X + X, FrameOrigin.Y + Y, Alpha, RgbWhite, @ClipRect, False, HardwareMirrorHorizontal);
             end;
             Inc(X, Width);
           end;
@@ -1271,9 +1191,7 @@ begin
     begin
       if FirstFrameImageCache <> nil then
       begin
-        if (CachedPlaybackGraphBuf = nil)
-            or (CachedPlaybackGraphBuf.Width <> Width)
-            or (CachedPlaybackGraphBuf.Height <> Height) then
+        if (CachedPlaybackGraphBuf = nil) or (CachedPlaybackGraphBuf.Width <> Width) or (CachedPlaybackGraphBuf.Height <> Height) then
         begin
           LastCachedFrameIndex := -1;
           if CachedPlaybackGraphBuf = nil then
@@ -1296,9 +1214,7 @@ begin
             while FrameIndex <= SequenceFrame do
             begin
               Frame := Image.LoadFrameGi(GetSequenceFrameSourceIndex(FrameIndex));
-              if (Frame <> nil)
-                  and (Frame.GetContentSize.X > 0)
-                  and (Frame.GetContentSize.Y > 0) then
+              if (Frame <> nil) and (Frame.GetContentSize.X > 0) and (Frame.GetContentSize.Y > 0) then
                 Frame.DrawToGraphBuf(
                     CachedPlaybackGraphBuf,
                     Frame.GetBoundsRect.Left - Bounds.Left,
@@ -1321,16 +1237,7 @@ begin
             X := Left;
             while X < Right do
             begin
-              DrawTexture(
-                  Texture,
-                  X,
-                  Y,
-                  Alpha,
-                  RgbWhite,
-                  @ClipRect,
-                  False,
-                  HardwareMirrorHorizontal
-              );
+              DrawTexture(Texture, X, Y, Alpha, RgbWhite, @ClipRect, False, HardwareMirrorHorizontal);
               Inc(X, Width);
             end;
             Inc(Y, Height);
@@ -1359,9 +1266,7 @@ begin
       end
       else if Image <> nil then
       begin
-        if (CachedPlaybackGraphBuf = nil)
-            or (CachedPlaybackGraphBuf.Width <> Width)
-            or (CachedPlaybackGraphBuf.Height <> Height) then
+        if (CachedPlaybackGraphBuf = nil) or (CachedPlaybackGraphBuf.Width <> Width) or (CachedPlaybackGraphBuf.Height <> Height) then
         begin
           LastCachedFrameIndex := -1;
           if CachedPlaybackGraphBuf = nil then
@@ -1418,16 +1323,7 @@ begin
             X := Left;
             while X < Right do
             begin
-              DrawTexture(
-                  Texture,
-                  X,
-                  Y,
-                  Alpha,
-                  RgbWhite,
-                  @ClipRect,
-                  False,
-                  HardwareMirrorHorizontal
-              );
+              DrawTexture(Texture, X, Y, Alpha, RgbWhite, @ClipRect, False, HardwareMirrorHorizontal);
               Inc(X, Width);
             end;
             Inc(Y, Height);

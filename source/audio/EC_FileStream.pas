@@ -42,7 +42,7 @@ uses
 
 constructor TFileStreamEC.Create(BufferBytes: Integer; const FileName: WideString);
 begin
-  inherited Create;
+  inherited Create('file-stream');
   BufferLock := TCriticalSection.Create;
   SourceFile := TFileEC.Create;
   SourceFile.SetFileName(FileName);
@@ -170,8 +170,7 @@ begin
       Chunk := ReadAvailable;
     if Chunk > 0 then
     begin
-      System
-          .Move(Pointer(AddPointerOffset(ReadBuffer, ReadPosition))^, Pointer(Destination)^, Chunk);
+      System.Move(Pointer(AddPointerOffset(ReadBuffer, ReadPosition))^, Pointer(Destination)^, Chunk);
       Inc(ReadPosition, Chunk);
       Dec(ReadAvailable, Chunk);
       Destination := AddPointerOffset(Destination, Chunk);
@@ -186,8 +185,7 @@ begin
       Chunk := ReadAvailable;
     if Chunk > 0 then
     begin
-      System
-          .Move(Pointer(AddPointerOffset(ReadBuffer, ReadPosition))^, Pointer(Destination)^, Chunk);
+      System.Move(Pointer(AddPointerOffset(ReadBuffer, ReadPosition))^, Pointer(Destination)^, Chunk);
       Inc(ReadPosition, Chunk);
       Dec(ReadAvailable, Chunk);
       Destination := AddPointerOffset(Destination, Chunk);

@@ -225,24 +225,24 @@ end;
 
 procedure TEditGI.ProcessKeyDown(Key: Integer);
 var
-  I, N: Integer;
+  CharIndex, TextLength: Integer;
   Control: TObjectGI;
 begin
   if (Key = VK_BACK) and not IsVirtualKeyDown(VK_SHIFT) then
   begin
     if CaretPosition > 0 then
     begin
-      N := Length(Text);
-      I := CaretPosition;
-      while I < N do
+      TextLength := Length(Text);
+      CharIndex := CaretPosition;
+      while CharIndex < TextLength do
       begin
-        Text[I] := Text[I + 1];
-        Inc(I);
+        Text[CharIndex] := Text[CharIndex + 1];
+        Inc(CharIndex);
       end;
-      SetLength(Text, N - 1);
+      SetLength(Text, TextLength - 1);
       Dec(CaretPosition);
       Invalidate;
-      DispatchNamedEvent(4, 0, 0);
+      DispatchNamedEvent(nceTextChanged, 0, 0);
       if Assigned(ChangedCallback) then
         ChangedCallback(Self);
     end;
@@ -252,24 +252,24 @@ begin
     Text := '';
     CaretPosition := 0;
     Invalidate;
-    DispatchNamedEvent(4, 0, 0);
+    DispatchNamedEvent(nceTextChanged, 0, 0);
     if Assigned(ChangedCallback) then
       ChangedCallback(Self);
   end
   else if Key = VK_DELETE then
   begin
-    N := Length(Text);
-    if CaretPosition < N then
+    TextLength := Length(Text);
+    if CaretPosition < TextLength then
     begin
-      I := CaretPosition + 1;
-      while I < N do
+      CharIndex := CaretPosition + 1;
+      while CharIndex < TextLength do
       begin
-        Text[I] := Text[I + 1];
-        Inc(I);
+        Text[CharIndex] := Text[CharIndex + 1];
+        Inc(CharIndex);
       end;
-      SetLength(Text, N - 1);
+      SetLength(Text, TextLength - 1);
       Invalidate;
-      DispatchNamedEvent(4, 0, 0);
+      DispatchNamedEvent(nceTextChanged, 0, 0);
       if Assigned(ChangedCallback) then
         ChangedCallback(Self);
     end;
@@ -332,26 +332,26 @@ end;
 
 procedure TEditGI.ProcessCharacter(Character: WideChar);
 var
-  I, N: Integer;
+  CharIndex, TextLength: Integer;
 begin
   inherited ProcessCharacter(Character);
   if HasGlyph(Character) then
     if not Assigned(AcceptCharCallback) or AcceptCharCallback(Self, Character) then
     begin
-      N := Length(Text);
-      if N < MaxLength then
+      TextLength := Length(Text);
+      if TextLength < MaxLength then
       begin
-        SetLength(Text, N + 1);
-        I := N;
-        while I >= CaretPosition do
+        SetLength(Text, TextLength + 1);
+        CharIndex := TextLength;
+        while CharIndex >= CaretPosition do
         begin
-          Text[I + 1] := Text[I];
-          Dec(I);
+          Text[CharIndex + 1] := Text[CharIndex];
+          Dec(CharIndex);
         end;
         Text[CaretPosition + 1] := Character;
         Inc(CaretPosition);
         Invalidate;
-        DispatchNamedEvent(4, 0, 0);
+        DispatchNamedEvent(nceTextChanged, 0, 0);
         if Assigned(ChangedCallback) then
           ChangedCallback(Self);
       end;
@@ -537,16 +537,7 @@ begin
     begin
       Bitmap := AcquireOrCreateBitmap(BackgroundCache);
       if HardwareRenderingEnabled then
-        DrawTexture(
-            Bitmap.Bitmap.GetTexture,
-            HitTestBounds.Left,
-            HitTestBounds.Top,
-            255,
-            RgbWhite,
-            @ClipRect,
-            False,
-            False
-        )
+        DrawTexture(Bitmap.Bitmap.GetTexture, HitTestBounds.Left, HitTestBounds.Top, 255, RgbWhite, @ClipRect, False, False)
       else
         Ex_OKGR_Copy_XY_XY_WORD(
             ScreenRenderBuffer.GetPixels,
@@ -564,14 +555,8 @@ begin
     X := HitTestBounds.Left + 2;
     with Font.MeasureTaggedTextBounds(Text, 0, 0, nil) do
       if TextAlignX = taxCenter then
-        X :=
-            HitTestBounds.Left
-                + (HitTestBounds.Right - HitTestBounds.Left) div 2
-                - (Right - Left) div 2;
-    Y :=
-        (HitTestBounds.Top + HitTestBounds.Bottom) div 2
-            - (Font.AboveBaseline + Font.BelowBaseline) div 2
-            + Font.AboveBaseline;
+        X := HitTestBounds.Left + (HitTestBounds.Right - HitTestBounds.Left) div 2 - (Right - Left) div 2;
+    Y := (HitTestBounds.Top + HitTestBounds.Bottom) div 2 - (Font.AboveBaseline + Font.BelowBaseline) div 2 + Font.AboveBaseline;
     N := Length(Text);
     FirstCharacter := 0;
     if AutoScrollText then
@@ -594,10 +579,7 @@ begin
     Buffer := TGraphBufGR.Create(True);
     if HardwareRenderingEnabled then
     begin
-      Buffer.AllocateRgbaTight(
-          HitTestBounds.Right - HitTestBounds.Left,
-          HitTestBounds.Bottom - HitTestBounds.Top
-      );
+      Buffer.AllocateRgbaTight(HitTestBounds.Right - HitTestBounds.Left, HitTestBounds.Bottom - HitTestBounds.Top);
       Font.UseARGBColors := True;
       Font.DefaultColor := ColorWithAlpha(Color565ToArgb(TextColor), 255);
     end;
@@ -620,26 +602,10 @@ begin
               CharacterText,
               Classes.Rect(0, 0, Buffer.Width, Buffer.Height)
           );
-          DrawTexture(
-              Buffer.GetTexture,
-              HitTestBounds.Left,
-              HitTestBounds.Top,
-              255,
-              RgbWhite,
-              @ClipRect,
-              False,
-              False
-          );
+          DrawTexture(Buffer.GetTexture, HitTestBounds.Left, HitTestBounds.Top, 255, RgbWhite, @ClipRect, False, False);
         end
         else
-          Font.DrawTaggedText16(
-              ScreenRenderBuffer.GetPixels,
-              ScreenRenderBuffer.PitchBytes,
-              X,
-              Y,
-              CharacterText,
-              ClipRect
-          );
+          Font.DrawTaggedText16(ScreenRenderBuffer.GetPixels, ScreenRenderBuffer.PitchBytes, X, Y, CharacterText, ClipRect);
       end;
       if (HasFocus = True) and (CaretPosition = I) and (MessageLoop.CaretBlinkOn = True) then
       begin
@@ -666,13 +632,8 @@ begin
         end
         else
         begin
-          ScreenRenderBuffer.DrawVerticalLine16Clipped(
-              X,
-              Y - (Font.AboveBaseline - 1),
-              Font.AboveBaseline + Font.BelowBaseline,
-              CaretColor,
-              ClipRect
-          );
+          ScreenRenderBuffer
+              .DrawVerticalLine16Clipped(X, Y - (Font.AboveBaseline - 1), Font.AboveBaseline + Font.BelowBaseline, CaretColor, ClipRect);
           ScreenRenderBuffer.DrawVerticalLine16Clipped(
               X + 1,
               Y - (Font.AboveBaseline - 1),

@@ -36,6 +36,7 @@ type
 implementation
 
 uses
+  GameDiagnostics,
   GI_Main,
   Classes,
   EC_BlockPar,
@@ -54,7 +55,7 @@ var
   Shift: Integer;
 begin
   inherited InitializeLayout;
-  AppendLogTextThreadSafe('fAbout... ');
+  LogGameMessage(gllDebug, 'ui', 'Initializing layout fAbout');
   ViewportRect := Classes.Rect(0, 0, GameScreenWidth, GameScreenHeight);
   with GetByName('MainPanel') do
   begin
@@ -70,10 +71,7 @@ begin
     with FindByNameRecursive('Caption') do
       SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y));
     with FindByNameRecursive('SubCaption') do
-      SetPosition(
-          Classes
-              .Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + ExtraScreenHeight)
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + ExtraScreenHeight));
     with FindByNameRecursive('LogoElemental') do
     begin
       Shift := LocalPosition.X * GameScreenWidth div 1024 - LocalPosition.X;
@@ -108,7 +106,6 @@ begin
       SetSize(Classes.Point(ClientSize.X, ClientSize.Y + ExtraScreenHeight));
     end;
   end;
-  AppendLogLineThreadSafe('ok');
   ViewportPanel := GetByName('PAbout') as TPanelGI;
   CreditsPanel := GetByName('PAboutI') as TPanelGI;
   with GetByName('MainPanel') do

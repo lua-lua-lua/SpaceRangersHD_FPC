@@ -7,9 +7,25 @@ interface
 uses
   EC_BlockPar,
   EC_Buf,
-  SimpleSteamApi;
+  WStringUtils;
 
 type
+
+  PointerToTAchievementData = ^TAchievementData;
+
+  TAchievementData = record
+    Name: PStartupWideString;
+    Description: PStartupWideString;
+    Achieved: Boolean;
+    HasProgress: Boolean;
+    Reserved0C: Integer;
+    MaxValue: Integer;
+    Value: Integer;
+    IconPath: PStartupWideString;
+    Date: Int64;
+  end;
+
+  PAchievementData = PointerToTAchievementData;
 
   TAchievementInfo = record
     Key: AnsiString;
@@ -120,7 +136,7 @@ type
     PrisonersBailedOut: Integer;
     DrainedHullPoints: Integer;
     StarFuelCollected: Cardinal;
-    StarFuelTankId: Integer;
+    StarFuelTankId: Cardinal;
     UninhabitedPlanetsVisited: Integer;
     constructor Create;
     destructor Destroy; override;
@@ -156,9 +172,6 @@ type
     procedure CheckTranclucatorFleetAchievement;
   end;
 
-  {$Z1}
-  TAchievementBackend = (achSteam = 1, achSteamWithoutAchievements = 2, achLocal = 3);
-
 var
 
   AchievementDefinitions: TBlockParEC = nil;
@@ -166,8 +179,6 @@ var
 function GetCurrentAchievementProgress(Key: WideString; StoredValue: Integer): Integer;
 
 procedure InitializeAchievementDefinitions;
-
-function GetAchievementBackend: TAchievementBackend;
 
 function GetAvailableAchievementCount: Integer;
 
@@ -191,8 +202,7 @@ uses
   aTranclucator,
   SysUtils,
   Math,
-  WStringUtils,
-  NoSteamAchievemens,
+  LocalAchievements,
   GlobalsV,
   aPlayer,
   aGalaxy,
@@ -217,7 +227,7 @@ begin
     else if Key = 'PIRATE' then
       Result := Stats.SystemsCapturedForPirates
     else if Key = 'SCIENCE' then
-      Result := Integer(Stats.CompletedResearchPrograms)
+      Result := Stats.CompletedResearchPrograms
     else if Key = 'HACKER' then
       Result := Stats.SuccessfulDominatorHacks
     else if Key = 'PRISONBAIL' then
@@ -324,7 +334,7 @@ var
   I, LastAward: Integer;
   AllPresent: Boolean;
   AwardId: Byte;
-  Present: array[0..255] of Boolean;
+  Present: array[Byte] of Boolean;
 begin
   { Native argument order is reversed: count zero leaves this buffer uninitialized. }
   FillChar(Present, 0, SizeOf(Present));
@@ -430,10 +440,7 @@ end;
 
 procedure TAchievementStats.CheckFirstPlaceRatingAchievement;
 begin
-  if (GetPlayer <> nil)
-      and (Galaxy <> nil)
-      and (Galaxy.CurrentTurn >= GalaxyWarmupTurns)
-      and (GetPlayer.PlaceInRating = 1) then
+  if (GetPlayer <> nil) and (Galaxy <> nil) and (Galaxy.CurrentTurn >= GalaxyWarmupTurns) and (GetPlayer.PlaceInRating = 1) then
     TryUnlockAchievement('RATING');
 end;
 
@@ -446,7 +453,7 @@ begin
   if (GetPlayer <> nil) and (Galaxy <> nil) then
   begin
     for Skill := Low(TPilotSkill) to High(TPilotSkill) do
-      if GetPlayer.GetBaseSkillLevel(Skill) < 6 then
+      if GetPlayer.GetBaseSkillLevel(Skill) < High(TPilotSkillLevel) then
         Complete := False;
     if Complete then
       TryUnlockAchievement('SKILL');
@@ -479,13 +486,13 @@ end;
 
 procedure TAchievementStats.CheckBaronAchievement;
 begin
-  if (GetPlayer <> nil) and (Galaxy <> nil) and (GetPlayer.PirateRank = 7) then
+  if (GetPlayer <> nil) and (Galaxy <> nil) and (GetPlayer.PirateRank = High(TShipRank)) then
     TryUnlockAchievement('BARON');
 end;
 
 procedure TAchievementStats.CheckCommanderAchievement;
 begin
-  if (GetPlayer <> nil) and (Galaxy <> nil) and (GetPlayer.Rank = 7) then
+  if (GetPlayer <> nil) and (Galaxy <> nil) and (GetPlayer.Rank = High(TShipRank)) then
     TryUnlockAchievement('COMMANDOR');
 end;
 
@@ -541,7 +548,7 @@ begin
     Exit;
   if GetPlayer.CountEquippedWeapons < 5 then
     Exit;
-  for I := 1 to 5 do
+  for I := Low(GetPlayer.Weapons) to High(GetPlayer.Weapons) do
     if GetPlayer.Weapons[I].HasStandardStats then
       Exit;
   TryUnlockAchievement('BEST');
@@ -600,7 +607,7 @@ begin
       Exit;
     for I := 0 to Galaxy.Constellations.Count - 1 do
     begin
-      Constellation := TConstellation(Galaxy.Constellations[I]);
+      Constellation := Galaxy.Constellations[I];
       if (not Constellation.Visible) and (Constellation.Id <> 20) then
         Exit;
     end;
@@ -629,10 +636,7 @@ begin
   for I := 0 to Star.Ships.Count - 1 do
   begin
     Ship := Star.Ships[I];
-    if Ship.InNormalSpace
-        and not Ship.IsHullDestroyed
-        and (Ship is TTranclucator)
-        and ((Ship as TTranclucator).OwnerShip = GetPlayer) then
+    if Ship.InNormalSpace and not Ship.IsHullDestroyed and (Ship is TTranclucator) and ((Ship as TTranclucator).OwnerShip = GetPlayer) then
       Inc(Count);
   end;
   if Count >= 10 then
@@ -646,10 +650,9 @@ var
 begin
   AchievementDefinitions := TBlockParEC.Create;
   // Entry zero is the native NONE sentinel and is not registered.
-  for Index := 1 to 82 do
+  for Index := 1 to High(AchievementDefinitionTable) do
   begin
-    Block :=
-        AchievementDefinitions.AddChildBlock(WideString(AchievementDefinitionTable[Index].Key));
+    Block := AchievementDefinitions.AddChildBlock(WideString(AchievementDefinitionTable[Index].Key));
     Block.AddParam('Id', WideString(AchievementDefinitionTable[Index].Key));
     Block.AddParam('Num', WideString(IntToStr(Index - 1)));
     Block.AddParam('MaxValue', WideString(IntToStr(AchievementDefinitionTable[Index].MaxValue)));
@@ -659,28 +662,9 @@ begin
   end;
 end;
 
-function GetAchievementBackend: TAchievementBackend;
-begin
-  if SteamInitialized then
-  begin
-    if SteamAchievementsCount > 0 then
-      Result := achSteam
-    else
-      Result := achSteamWithoutAchievements;
-  end
-  else
-    Result := achLocal;
-end;
-
 function GetAvailableAchievementCount: Integer;
 begin
-  case GetAchievementBackend of
-    achSteam: Result := Min(82, SteamAchievementsCount);
-    achLocal: Result := 82;
-    achSteamWithoutAchievements: Result := 0;
-  else
-    Result := 0;
-  end;
+  Result := High(AchievementDefinitionTable);
 end;
 
 function TryUnlockAchievement(Key: WideString): Boolean;
@@ -699,13 +683,7 @@ begin
   Block := AchievementDefinitions.FindBlock(Key);
   if Block = nil then
     Exit;
-  case GetAchievementBackend of
-    achSteam: Result := SteamUnlockAchievement(StrToInt(AnsiString(Block.GetParam('Num'))));
-    achLocal: Result := UnlockLocalAchievement(Block);
-    achSteamWithoutAchievements: Result := False;
-  else
-    Result := False;
-  end;
+  Result := UnlockLocalAchievement(Block);
   if Result and (GetPlayer <> nil) then
     GetPlayer.AwardedAchievementKeys.AddChildBlock(Key);
 end;
@@ -733,13 +711,7 @@ begin
     Increment := Amount
   else
     Increment := Data.MaxValue - Data.Value;
-  case GetAchievementBackend of
-    achSteam: Result := SteamIncreaseStat(StrToInt(AnsiString(Block.GetParam('Num'))), Increment);
-    achLocal: Result := IncreaseLocalAchievementProgress(Block, Increment);
-    achSteamWithoutAchievements: Result := False;
-  else
-    Result := False;
-  end;
+  Result := IncreaseLocalAchievementProgress(Block, Increment);
   FreeAchievementData(Data);
   Data := GetAchievementData(Key);
   if (GetPlayer <> nil) and Data.Achieved then
@@ -775,13 +747,7 @@ begin
     FreeAchievementData(Data);
     Exit;
   end;
-  case GetAchievementBackend of
-    achSteam: Result := SteamIncreaseStat(StrToInt(AnsiString(Block.GetParam('Num'))), Increment);
-    achLocal: Result := IncreaseLocalAchievementProgress(Block, Increment);
-    achSteamWithoutAchievements: Result := False;
-  else
-    Result := False;
-  end;
+  Result := IncreaseLocalAchievementProgress(Block, Increment);
   FreeAchievementData(Data);
   Data := GetAchievementData(Key);
   if (GetPlayer <> nil) and Data.Achieved then
@@ -798,27 +764,21 @@ begin
   if Block <> nil then
   begin
     Result := CreateAchievementData;
-    case GetAchievementBackend of
-      achSteam: SteamAchievementData(StrToInt(AnsiString(Block.GetParam('Num'))), Result);
-      achLocal: GetLocalAchievementData(Key, Result);
-    end;
-    TruncateStartupWideString(Result.Name);
-    TruncateStartupWideString(Result.Description);
-    TruncateStartupWideString(Result.IconPath);
+    GetLocalAchievementData(Key, Result);
   end;
 end;
 
 function CreateAchievementData: PAchievementData;
 begin
   New(Result);
-  Result.Name := AllocateStartupWideString(255);
-  Result.Description := AllocateStartupWideString(255);
+  Result.Name := AllocateStartupWideString(0);
+  Result.Description := AllocateStartupWideString(0);
   Result.Achieved := False;
   Result.HasProgress := False;
   Result.Reserved0C := 0;
   Result.MaxValue := 0;
   Result.Value := 0;
-  Result.IconPath := AllocateStartupWideString(255);
+  Result.IconPath := AllocateStartupWideString(0);
   Result.Date := 0;
 end;
 

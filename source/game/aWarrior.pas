@@ -40,17 +40,9 @@ type
     function GetStrengthScaledPirateStatus: TPercent; override;
     function GetDesiredCargoFreeSpace: Integer; override;
     procedure RefuelAtLocation; override;
-    function AdjustItemEvaluation(
-        Item: TItem;
-        PriceMode: Byte;
-        Effectiveness: Single
-    ): Single; override;
+    function AdjustItemEvaluation(Item: TItem; PriceMode: Byte; Effectiveness: Single): Single; override;
     function EvaluateStatBonus(BonusKind: TEquipmentBonusKind; Value: Integer): Single; override;
-    function EvaluateWeaponDamage(
-        Weapon: TWeapon;
-        IncludeAdditiveBonuses: Boolean;
-        BaseDamage: Single
-    ): Single; override;
+    function EvaluateWeaponDamage(Weapon: TWeapon; IncludeAdditiveBonuses: Boolean; BaseDamage: Single): Single; override;
     procedure RepairBrokenEquipmentAtLocation; override;
     procedure BuildReachablePlanetQueue; override;
     function CanQueueReachablePlanet(Planet: TPlanet): Boolean; override;
@@ -68,35 +60,12 @@ type
     function AcceptPickupDistance(Item: TItem; Distance: Double): Boolean; override;
     procedure ProcessCombatDialogue; override;
     procedure ReactToExtortionDemand(Ranger: Pointer); override;
-    function BuildMoneyExtortionResponse(
-        OtherShip: TShip;
-        var Response: WideString;
-        DemandedAmount: Integer
-    ): Boolean; override;
-    function BuildCargoExtortionResponse(
-        OtherShip: TShip;
-        var Response: WideString
-    ): Boolean; override;
-    function BuildTrucePaymentResponse(
-        OtherShip: TShip;
-        var Response: WideString;
-        OfferedAmount: Integer
-    ): Boolean; override;
-    function BuildAttackRequestResponse(
-        Requester: TShip;
-        var Response: WideString;
-        Target: TShip
-    ): Boolean; override;
-    function AcceptPartnershipOffer(
-        OtherShip: TShip;
-        var Response: WideString;
-        PaymentAmount: Integer
-    ): Boolean; override;
-    function BuildPartnershipOfferResponse(
-        OtherShip: TShip;
-        var Response: WideString;
-        PaymentAmount: Integer
-    ): Boolean; override;
+    function BuildMoneyExtortionResponse(OtherShip: TShip; var Response: WideString; DemandedAmount: Integer): Boolean; override;
+    function BuildCargoExtortionResponse(OtherShip: TShip; var Response: WideString): Boolean; override;
+    function BuildTrucePaymentResponse(OtherShip: TShip; var Response: WideString; OfferedAmount: Integer): Boolean; override;
+    function BuildAttackRequestResponse(Requester: TShip; var Response: WideString; Target: TShip): Boolean; override;
+    function AcceptPartnershipOffer(OtherShip: TShip; var Response: WideString; PaymentAmount: Integer): Boolean; override;
+    function BuildPartnershipOfferResponse(OtherShip: TShip; var Response: WideString; PaymentAmount: Integer): Boolean; override;
     function RefusesFactionNegotiation(OtherShip: TShip): Boolean; override;
     procedure RefreshCurrentStanding; override;
     destructor Destroy; override;
@@ -118,12 +87,12 @@ const
 
   WarriorSkillBonusWeights: array[bonSkill1..bonSkill6] of Integer = (100, 100, 80, 10, 10, 10);
 
-  WarriorSlotBonusWeights: array[bonSlotRadar..bonSlotForsage] of Integer =
-      (80, 80, 200, 0, 200, 150, 0, 10);
+  WarriorSlotBonusWeights: array[bonSlotRadar..bonSlotForsage] of Integer = (80, 80, 200, 0, 200, 150, 0, 10);
 
 implementation
 
 uses
+  GameDiagnostics,
   aEFilmEnd,
   aPlayer,
   aKling,
@@ -164,10 +133,7 @@ var
   Config: TBlockParEC;
   Weapon: TWeapon;
 
-  function SelectTechLevel(
-      Minimum,
-      Maximum: Integer
-  ): Integer; { Nested helper with caller-popped static link. }
+  function SelectTechLevel(Minimum, Maximum: Integer): Integer; { Nested helper with caller-popped static link. }
   begin
     Result := Round(RemapClamped(Galaxy.TechLevel, 1, 8, Minimum, Maximum));
     Result := Max(Min(Result + NextRandomIntRange(-2, 2, RandomState), Maximum), Minimum);
@@ -200,11 +166,7 @@ begin
     LastNameIndex := 0;
     FirstNameIndex := Config.GetParamCount - 1;
     Name :=
-        Config.GetParamValue(NextRandomIntRange(LastNameIndex, FirstNameIndex, RandomState))
-            + ' '
-            + '-'
-            + IntToStr(Cardinal(Id) mod 100 + 1)
-            + '-';
+        Config.GetParamValue(NextRandomIntRange(LastNameIndex, FirstNameIndex, RandomState)) + ' ' + '-' + IntToStr(Id mod 100 + 1) + '-';
   end;
   if Length(GetName) = 0 then
   begin
@@ -221,11 +183,7 @@ begin
     LastNameIndex := 0;
     FirstNameIndex := Config.GetParamCount - 1;
     Name :=
-        Config.GetParamValue(NextRandomIntRange(LastNameIndex, FirstNameIndex, RandomState))
-            + ' '
-            + '-'
-            + IntToStr(Cardinal(Id) mod 100 + 1)
-            + '-';
+        Config.GetParamValue(NextRandomIntRange(LastNameIndex, FirstNameIndex, RandomState)) + ' ' + '-' + IntToStr(Id mod 100 + 1) + '-';
   end;
   if GetPlayer <> nil then
   begin
@@ -241,28 +199,9 @@ begin
     AddRankPoints(NextRandomIntRange(0, CoalitionRankPointThresholds[Rank] div 2, RandomState));
     if not Galaxy.IsZeroStartingExperienceEnabled then
     begin
+      GainExperience(Round(RemapClamped(Ord(Rank), 0, 1000, TotalSkillTrainingCost div 6, TotalSkillTrainingCost div 2)), esUnscaled);
       GainExperience(
-          Round(
-              RemapClamped(
-                  Ord(Rank),
-                  0,
-                  1000,
-                  TotalSkillTrainingCost div 6,
-                  TotalSkillTrainingCost div 2
-              )
-          ),
-          esUnscaled
-      );
-      GainExperience(
-          Round(
-              RemapClamped(
-                  Galaxy.TechLevel,
-                  3,
-                  8,
-                  0,
-                  NextRandomIntRange(0, TotalSkillTrainingCost div 2, RandomState)
-              )
-          ),
+          Round(RemapClamped(Galaxy.TechLevel, 3, 8, 0, NextRandomIntRange(0, TotalSkillTrainingCost div 2, RandomState))),
           esUnscaled
       );
     end;
@@ -276,13 +215,7 @@ begin
     TechLevel := Ranger.GetHull.TechLevel;
   if WarriorType = wtFlagship then
   begin
-    CreateAndEquipHull(
-        Round(3 * HullBaseSize * EquipmentSizeFactors[5]),
-        SelectTechLevel(3, 8),
-        RaceToOwner(PilotRace),
-        -1,
-        False
-    );
+    CreateAndEquipHull(Round(3 * HullBaseSize * EquipmentSizeFactors[5]), SelectTechLevel(3, 8), RaceToOwner(PilotRace), -1, False);
     CreateAndEquipFuelTanks(Round(2 * FuelTanksBaseSize * EquipmentSizeFactors[5]), 1, OwnerId);
     CreateAndEquipEngine(Round(2 * EngineBaseSize * EquipmentSizeFactors[1]), 1, OwnerId);
     if GetSlotCount(sskWeapon) > WeaponCount then
@@ -304,17 +237,9 @@ begin
       Weapon.Improve(ikAny);
     end;
     if GetSlotCountForItemType(t_Radar) > 0 then
-      CreateAndEquipRadar(
-          Round(2 * RadarBaseSize * EquipmentSizeFactors[NextRandomIntRange(2, 4, RandomState)]),
-          1,
-          OwnerId
-      );
+      CreateAndEquipRadar(Round(2 * RadarBaseSize * EquipmentSizeFactors[NextRandomIntRange(2, 4, RandomState)]), 1, OwnerId);
     if GetSlotCountForItemType(t_Scaner) > 0 then
-      CreateAndEquipScanner(
-          Round(2 * ScannerBaseSize * EquipmentSizeFactors[NextRandomIntRange(2, 4, RandomState)]),
-          1,
-          OwnerId
-      );
+      CreateAndEquipScanner(Round(2 * ScannerBaseSize * EquipmentSizeFactors[NextRandomIntRange(2, 4, RandomState)]), 1, OwnerId);
   end
   else
   begin
@@ -328,20 +253,11 @@ begin
     CreateAndEquipFuelTanks(Round(FuelTanksBaseSize * EquipmentSizeFactors[5]), 1, OwnerId);
     CreateAndEquipEngine(Round(EngineBaseSize * EquipmentSizeFactors[1]), 1, OwnerId);
     if GetSlotCount(sskWeapon) > WeaponCount then
-      CreateAndEquipWeapon(
-          t_IndustrialLaser,
-          WeaponInfos[t_IndustrialLaser].AverageSize,
-          1,
-          OwnerId
-      );
+      CreateAndEquipWeapon(t_IndustrialLaser, WeaponInfos[t_IndustrialLaser].AverageSize, 1, OwnerId);
     if GetSlotCount(sskWeapon) > WeaponCount then
       CreateAndEquipWeapon(t_Flux, WeaponInfos[t_Flux].AverageSize, 1, OwnerId);
     if GetSlotCountForItemType(t_Radar) > 0 then
-      CreateAndEquipRadar(
-          Round(EquipmentSizeFactors[NextRandomIntRange(2, 4, RandomState)] * RadarBaseSize),
-          1,
-          OwnerId
-      );
+      CreateAndEquipRadar(Round(EquipmentSizeFactors[NextRandomIntRange(2, 4, RandomState)] * RadarBaseSize), 1, OwnerId);
   end;
   if GetCargoFreeSpace < 0 then
   begin
@@ -401,8 +317,8 @@ begin
   except
     on E: Exception do
     begin
-      AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
-      raise Exception.Create('Error in procedure TWarrior.NextDay ' + GetFullName(' '));
+      AddGameExceptionContext(E, 'TWarrior.NextDay ' + GetFullName(' '));
+      raise;
     end;
   end;
 end;
@@ -563,12 +479,8 @@ begin
     except
       on E: Exception do
       begin
-        AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
-        raise Exception.Create(
-            'Error in procedure TWarrior.NextDayLogic '
-                + GetFullName(' ')
-                + ' label = '
-                + IntToStr(Stage));
+        AddGameExceptionContext(E, 'TWarrior.NextDayLogic ' + GetFullName(' ') + '; stage=' + IntToStr(Stage));
+        raise;
       end;
     end;
 end;
@@ -648,8 +560,7 @@ var
         for I := 1 to Inventory.Count - 1 do
         begin
           Equipment := Inventory[I];
-          if (not (Equipment is TWeapon)
-                  or (TWeapon(Equipment).GetWeaponInfo.Availability <> waNotSoldAndNodeRepair))
+          if (not (Equipment is TWeapon) or (TWeapon(Equipment).GetWeaponInfo.Availability <> waNotSoldAndNodeRepair))
               and CanRepairEquipmentTech(Equipment)
               and (Equipment.ItemType <> t_Hull)
               and (Equipment.EquippedFlag <> 0) then
@@ -670,14 +581,12 @@ var
           for I := 0 to Inventory.Count - 1 do
           begin
             Equipment := Inventory[I];
-            if (not (Equipment is TWeapon)
-                    or (TWeapon(Equipment).GetWeaponInfo.Availability <> waNotSoldAndNodeRepair))
+            if (not (Equipment is TWeapon) or (TWeapon(Equipment).GetWeaponInfo.Availability <> waNotSoldAndNodeRepair))
                 and CanRepairEquipmentTech(Equipment)
                 and (Equipment.ItemType <> t_Hull)
                 and (Equipment.EquippedFlag <> 0) then
             begin
-              Equipment.ConditionPercent :=
-                  RemapClamped(Fraction, 0, 1, Equipment.ConditionPercent, 100);
+              Equipment.ConditionPercent := RemapClamped(Fraction, 0, 1, Equipment.ConditionPercent, 100);
               if Equipment.ConditionPercent > 0 then
                 Equipment.BrokenFlag := 0;
             end;
@@ -862,12 +771,8 @@ begin
   except
     on E: Exception do
     begin
-      AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
-      raise Exception.Create(
-          'Error in procedure TWarrior.NextDayLogic '
-              + GetFullName(' ')
-              + ' label = '
-              + IntToStr(Stage));
+      AddGameExceptionContext(E, 'TWarrior.NextDayLogic ' + GetFullName(' ') + '; stage=' + IntToStr(Stage));
+      raise;
     end;
   end;
 end;
@@ -880,8 +785,7 @@ begin
     Result := True;
   end
   else if (GetFuelTanks.Fuel = GetFuelTanks.Capacity)
-      or (JumpRange * JumpRange
-          >= PointDistanceSquared(HomePlanet.CurrentStar.Position, CurrentStar.Position)) then
+      or (JumpRange * JumpRange >= PointDistanceSquared(HomePlanet.CurrentStar.Position, CurrentStar.Position)) then
   begin
     OrderJump(HomePlanet.CurrentStar, False);
     Result := True;
@@ -968,16 +872,9 @@ begin
   if TypeNameOverrideKey = '' then
   begin
     if WarriorType = wtFlagship then
-      Result :=
-          LocalizedText(
-                  'ShipType.' + OwnerToSys(RaceToOwner(PilotRace)) + '.' + GetTypeNameKey + 'Big')
-              + Separator
-              + Name
+      Result := LocalizedText('ShipType.' + OwnerToSys(RaceToOwner(PilotRace)) + '.' + GetTypeNameKey + 'Big') + Separator + Name
     else
-      Result :=
-          LocalizedText('ShipType.' + OwnerToSys(RaceToOwner(PilotRace)) + '.' + GetTypeNameKey)
-              + Separator
-              + Name;
+      Result := LocalizedText('ShipType.' + OwnerToSys(RaceToOwner(PilotRace)) + '.' + GetTypeNameKey) + Separator + Name;
   end
   else
   begin
@@ -1039,16 +936,9 @@ begin
       AddRankPoints(NextRandomIntRange(10, 20, RandomState));
       TryPromoteRank;
     end;
-    if (NextRandomUnitFloat(RandomState) < 0.02)
-        and (CurrentPlanet <> nil)
-        and ((AwardIds = nil) or (2 * (Rank + 1) > AwardIds.Count)) then
+    if (NextRandomUnitFloat(RandomState) < 0.02) and (CurrentPlanet <> nil) and ((AwardIds = nil) or (2 * (Rank + 1) > AwardIds.Count)) then
     begin
-      Award :=
-          SelectAward(
-              RaceToOwner(CurrentPlanet.RaceId),
-              [atAccomplishment, atSecretMission],
-              [stKling..rstCustomStation]
-          );
+      Award := SelectAward(RaceToOwner(CurrentPlanet.RaceId), [atAccomplishment, atSecretMission], [stKling..rstCustomStation]);
       if Award <> AwardNotFound then
         AddAward(Award);
     end;
@@ -1062,11 +952,7 @@ begin
         Round(
             Max(
                 10,
-                Min(
-                    20,
-                    OwnerRelations[RaceToOwner(PilotRace), Ship.OwnerId]
-                        * (0.5 * PlanetRaceMarket[PilotRace].PirateRelationFactor)
-                )
+                Min(20, OwnerRelations[RaceToOwner(PilotRace), Ship.OwnerId] * (0.5 * PlanetRaceMarket[PilotRace].PirateRelationFactor))
             )
         )
   else if Ship.TypeId in [stKling, stTranclucator] then
@@ -1097,15 +983,13 @@ begin
   else
     Relation := Value;
   HomePlanet.RangerRelations[Index] := Pointer(Relation);
-  if (Relation < RelationBadMin)
-      and ((EnemyShip = nil) or (EnemyShip.CurrentStar <> CurrentStar)) then
+  if (Relation < RelationBadMin) and ((EnemyShip = nil) or (EnemyShip.CurrentStar <> CurrentStar)) then
     EnemyShip := TShip(Ranger);
   if GetPlayer = Ranger then
   begin
     if RandomIntRange(0, 100) = 0 then
       SysUtils.Sleep(1);
-    if (Byte(HomePlanet.RangerRelations[Index]) <> Relation)
-        and not GR_Main.CCInterface.GetTamperDetected then
+    if (Byte(HomePlanet.RangerRelations[Index]) <> Relation) and not GR_Main.CCInterface.GetTamperDetected then
       GR_Main.CCInterface.SetTamperDetected(True);
   end;
 end;
@@ -1159,12 +1043,13 @@ end;
 
 function TWarrior.AcceptsAppealFrom(Ship: TShip): Boolean;
 begin
-  Result :=
-      RelationToShip(Ship) + RemapClamped(Ship.Strength, 0.9 * Strength, Strength * 3, 0, 100)
-          > 160;
+  Result := RelationToShip(Ship) + RemapClamped(Ship.Strength, 0.9 * Strength, Strength * 3, 0, 100) > 160;
 end;
 
 procedure TWarrior.AssignWeaponTargetsInStar;
+const
+  MissileShotTypes = [wstTorpedo..wstRocket];
+  AreaOrMissileShotTypes = [wstAreaDamage..wstRocket];
 var
   I, J, Assigned: Integer;
   Ship: TShip;
@@ -1199,8 +1084,7 @@ begin
             for J := 1 to WeaponCount do
             begin
               Weapon := Weapons[J];
-              if (not (Weapon.GetWeaponInfo.ShotType in [wstTorpedo..wstRocket])
-                      or (Weapon.Ammo <> 0))
+              if (not (Weapon.GetWeaponInfo.ShotType in MissileShotTypes) or (Weapon.Ammo <> 0))
                   and (Weapon.Target = nil)
                   and IsEquipmentUsable(Weapon) then
                 if GetWeaponRange(Weapon) >= Distance then
@@ -1214,15 +1098,12 @@ begin
           end;
         end;
       Stage := 2;
-      if (EnemyShip <> nil)
-          and (EnemyShip.CurrentStar = CurrentStar)
-          and EnemyShip.InNormalSpace then
+      if (EnemyShip <> nil) and (EnemyShip.CurrentStar = CurrentStar) and EnemyShip.InNormalSpace then
       begin
         SameRacePlanet :=
             (EnemyShip.OrderTarget is TPlanet)
                 and ((EnemyShip.OrderTarget as TPlanet).RaceId = HomePlanet.RaceId)
-                and ((EnemyShip.OrderTarget as TPlanet).RelationToShip(EnemyShip)
-                    <= RelationToShip(EnemyShip));
+                and ((EnemyShip.OrderTarget as TPlanet).RelationToShip(EnemyShip) <= RelationToShip(EnemyShip));
         IgnoreRanger :=
             (EnemyShip.TypeId = stRanger)
                 and ((EnemyShip.OrderTarget = HomePlanet) or SameRacePlanet)
@@ -1243,12 +1124,10 @@ begin
           for J := 1 to WeaponCount do
           begin
             Weapon := Weapons[J];
-            if (not (Weapon.GetWeaponInfo.ShotType in [wstTorpedo..wstRocket])
-                    or (Weapon.Ammo <> 0))
+            if (not (Weapon.GetWeaponInfo.ShotType in MissileShotTypes) or (Weapon.Ammo <> 0))
                 and (Weapon.Target = nil)
                 and IsEquipmentUsable(Weapon) then
-              if PointDistanceSquared(Position, EnemyShip.Position)
-                  <= Sqr(GetWeaponRange(Weapon)) then
+              if PointDistanceSquared(Position, EnemyShip.Position) <= Sqr(GetWeaponRange(Weapon)) then
               begin
                 Weapon.Target := EnemyShip;
                 Inc(Assigned);
@@ -1265,9 +1144,7 @@ begin
         if Ship.InNormalSpace and (Ship <> Self) and (EnemyShip <> Ship) then
         begin
           Stage := 32;
-          if (RelationToShip(Ship) < RelationBadMin)
-              or (EnemyShip = Ship)
-              or (Ship.EnemyShip = Self) then
+          if (RelationToShip(Ship) < RelationBadMin) or (EnemyShip = Ship) or (Ship.EnemyShip = Self) then
           begin
             Stage := 33;
             if TruceShip <> Ship then
@@ -1280,13 +1157,11 @@ begin
                 begin
                   Stage := 36;
                   Weapon := Weapons[J];
-                  if not (Weapon.GetWeaponInfo.ShotType in [wstTorpedo..wstRocket])
-                      or (Weapon.Ammo <> 0) then
+                  if not (Weapon.GetWeaponInfo.ShotType in MissileShotTypes) or (Weapon.Ammo <> 0) then
                   begin
                     Stage := 37;
                     if IsEquipmentUsable(Weapon) then
-                      if PointDistanceSquared(Position, Ship.Position)
-                          <= Sqr(GetWeaponRange(Weapon)) then
+                      if PointDistanceSquared(Position, Ship.Position) <= Sqr(GetWeaponRange(Weapon)) then
                       begin
                         Stage := 38;
                         // Native hostile-ship pass can replace an earlier assignment.
@@ -1310,11 +1185,8 @@ begin
           for J := 1 to WeaponCount do
           begin
             Weapon := Weapons[J];
-            if not (Weapon.GetWeaponInfo^.ShotType in [wstTorpedo..wstRocket])
-                and (Weapon.Target = nil)
-                and IsEquipmentUsable(Weapon) then
-              if PointDistanceSquared(Position, Missile.Position)
-                  <= Sqr(GetWeaponRange(Weapon)) then
+            if not (Weapon.GetWeaponInfo^.ShotType in MissileShotTypes) and (Weapon.Target = nil) and IsEquipmentUsable(Weapon) then
+              if PointDistanceSquared(Position, Missile.Position) <= Sqr(GetWeaponRange(Weapon)) then
               begin
                 Weapon.Target := Missile;
                 Inc(Assigned);
@@ -1335,8 +1207,7 @@ begin
             begin
               Weapon := Weapons[J];
               // Native asteroid targeting can overwrite an existing assignment.
-              if not (Weapon.GetWeaponInfo^.ShotType in [wstAreaDamage..wstRocket])
-                  and IsEquipmentUsable(Weapon) then
+              if not (Weapon.GetWeaponInfo^.ShotType in AreaOrMissileShotTypes) and IsEquipmentUsable(Weapon) then
                 if Sqr(GetWeaponRange(Weapon)) >= Distance then
                 begin
                   Weapon.Target := Asteroid;
@@ -1357,17 +1228,13 @@ begin
             if (GetPlayer.CurrentStar <> CurrentStar)
                 or (GetRelationLevelToShip(GetPlayer) <= rlBad)
                 or (PointDistance(GetPlayer.Position, Item.Position) >= 800)
-                or ((NextRandomUnitFloat(RandomState) <= 0.1)
-                    and (PointDistance(GetPlayer.Position, Item.Position) >= 200)) then
+                or ((NextRandomUnitFloat(RandomState) <= 0.1) and (PointDistance(GetPlayer.Position, Item.Position) >= 200)) then
               if CanSafelyDetonateItem(Item) then
                 for J := 1 to WeaponCount do
                 begin
                   Weapon := Weapons[J];
-                  if not (Weapon.GetWeaponInfo^.ShotType in [wstTorpedo..wstRocket])
-                      and (Weapon.Target = nil)
-                      and IsEquipmentUsable(Weapon) then
-                    if PointDistanceSquared(Position, Item.Position)
-                        <= Sqr(GetWeaponRange(Weapon)) then
+                  if not (Weapon.GetWeaponInfo^.ShotType in MissileShotTypes) and (Weapon.Target = nil) and IsEquipmentUsable(Weapon) then
+                    if PointDistanceSquared(Position, Item.Position) <= Sqr(GetWeaponRange(Weapon)) then
                     begin
                       Weapon.Target := Item;
                       Inc(Assigned);
@@ -1385,11 +1252,10 @@ begin
         for J := 1 to WeaponCount do
         begin
           Weapon := Weapons[J];
-          if (not (Weapon.GetWeaponInfo.ShotType in [wstTorpedo..wstRocket]) or (Weapon.Ammo <> 0))
+          if (not (Weapon.GetWeaponInfo.ShotType in MissileShotTypes) or (Weapon.Ammo <> 0))
               and (Weapon.Target = nil)
               and IsEquipmentUsable(Weapon) then
-            if PointDistanceSquared(Position, GetPlayer.Position)
-                <= Sqr(GetWeaponRange(Weapon)) then
+            if PointDistanceSquared(Position, GetPlayer.Position) <= Sqr(GetWeaponRange(Weapon)) then
             begin
               Weapon.Target := GetPlayer;
               Inc(Assigned);
@@ -1400,12 +1266,8 @@ begin
     except
       on E: Exception do
       begin
-        AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
-        raise Exception.Create(
-            'Error in procedure TWarrior.ArmsToTarget '
-                + GetFullName(' ')
-                + ' label = '
-                + IntToStr(Stage));
+        AddGameExceptionContext(E, 'TWarrior.ArmsToTarget ' + GetFullName(' ') + '; stage=' + IntToStr(Stage));
+        raise;
       end;
     end;
 end;
@@ -1434,19 +1296,14 @@ var
     for J := 1 to WeaponCount do
     begin
       Weapon := Weapons[J];
-      if IsEquipmentUsable(Weapon)
-          and (not (Weapon.GetWeaponInfo.ShotType in [wstTorpedo..wstRocket])
-              or (Weapon.Ammo > 0)) then
+      if IsEquipmentUsable(Weapon) and (not (Weapon.GetWeaponInfo.ShotType in [wstTorpedo..wstRocket]) or (Weapon.Ammo > 0)) then
       begin
         Range := GetWeaponRange(Weapon);
         Distance := PointDistance(Position, Ship.Position);
         if Range >= Distance then
         begin
           if Score = 0 then
-            Score :=
-                Ship.CalculateAttackStrength
-                    / Ship.CalculateDefenseStrength
-                    * RemapClamped(Distance, 0, Range, 1.5, 1);
+            Score := Ship.CalculateAttackStrength / Ship.CalculateDefenseStrength * RemapClamped(Distance, 0, Range, 1.5, 1);
           if (Score > Scores[J]) or (Weapon.Target = nil) then
           begin
             if Weapon.Target = nil then
@@ -1474,8 +1331,7 @@ begin
       SameRacePlanet :=
           (EnemyShip.OrderTarget is TPlanet)
               and ((EnemyShip.OrderTarget as TPlanet).RaceId = HomePlanet.RaceId)
-              and ((EnemyShip.OrderTarget as TPlanet).RelationToShip(EnemyShip)
-                  <= RelationToShip(EnemyShip));
+              and ((EnemyShip.OrderTarget as TPlanet).RelationToShip(EnemyShip) <= RelationToShip(EnemyShip));
       IgnoreRanger :=
           (EnemyShip.TypeId = stRanger)
               and ((EnemyShip.OrderTarget = HomePlanet) or SameRacePlanet)
@@ -1504,9 +1360,7 @@ begin
         for J := 1 to WeaponCount do
         begin
           Weapon := Weapons[J];
-          if not (Weapon.GetWeaponInfo^.ShotType in [wstTorpedo..wstRocket])
-              and (Weapon.Target = nil)
-              and IsEquipmentUsable(Weapon) then
+          if not (Weapon.GetWeaponInfo^.ShotType in [wstTorpedo..wstRocket]) and (Weapon.Target = nil) and IsEquipmentUsable(Weapon) then
             if PointDistanceSquared(Position, Missile.Position) <= Sqr(GetWeaponRange(Weapon)) then
             begin
               Weapon.Target := Missile;
@@ -1528,8 +1382,7 @@ begin
           begin
             Weapon := Weapons[J];
             // Native asteroid targeting can overwrite an existing assignment.
-            if not (Weapon.GetWeaponInfo^.ShotType in [wstAreaDamage..wstRocket])
-                and IsEquipmentUsable(Weapon) then
+            if not (Weapon.GetWeaponInfo^.ShotType in [wstAreaDamage..wstRocket]) and IsEquipmentUsable(Weapon) then
               if Sqr(GetWeaponRange(Weapon)) >= Distance then
               begin
                 Weapon.Target := Asteroid;
@@ -1551,8 +1404,7 @@ begin
           if (GetPlayer.CurrentStar <> CurrentStar)
               or (GetRelationLevelToShip(GetPlayer) <= rlBad)
               or (PointDistance(GetPlayer.Position, Item.Position) >= 800)
-              or ((NextRandomUnitFloat(RandomState) <= 0.1)
-                  and (PointDistance(GetPlayer.Position, Item.Position) >= 200)) then
+              or ((NextRandomUnitFloat(RandomState) <= 0.1) and (PointDistance(GetPlayer.Position, Item.Position) >= 200)) then
             if CanSafelyDetonateItem(Item) then
               for J := 1 to WeaponCount do
               begin
@@ -1560,8 +1412,7 @@ begin
                 if not (Weapon.GetWeaponInfo^.ShotType in [wstTorpedo..wstRocket])
                     and (Weapon.Target = nil)
                     and IsEquipmentUsable(Weapon) then
-                  if PointDistanceSquared(Position, Item.Position)
-                      <= Sqr(GetWeaponRange(Weapon)) then
+                  if PointDistanceSquared(Position, Item.Position) <= Sqr(GetWeaponRange(Weapon)) then
                   begin
                     Weapon.Target := Item;
                     Inc(Assigned);
@@ -1593,12 +1444,8 @@ begin
   except
     on E: Exception do
     begin
-      AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
-      raise Exception.Create(
-          'Error in procedure TWarrior.ArmsToTarget '
-              + GetFullName(' ')
-              + ' label = '
-              + IntToStr(Stage));
+      AddGameExceptionContext(E, 'TWarrior.ArmsToTarget ' + GetFullName(' ') + '; stage=' + IntToStr(Stage));
+      raise;
     end;
   end;
 end;
@@ -1614,10 +1461,7 @@ begin
   for I := 0 to CurrentStar.Ships.Count - 1 do
   begin
     Ship := CurrentStar.Ships[I];
-    if (Ship <> Self)
-        and (Ship is TWarrior)
-        and ((Ship as TWarrior).WarriorType = wtFlagship)
-        and Ship.InNormalSpace then
+    if (Ship <> Self) and (Ship is TWarrior) and ((Ship as TWarrior).WarriorType = wtFlagship) and Ship.InNormalSpace then
       if Ship.GetRelationLevelToShip(Self) > rlHostile then
       begin
         Distance := PointDistanceSquared(Position, Ship.Position);
@@ -1645,8 +1489,7 @@ begin
   else
   begin
     Ship := FindNearestFriendlyFlagship;
-    InFlagshipRange :=
-        (Ship <> nil) and (PointDistanceSquared(Position, Ship.Position) < Sqr(Ship.GetRadarRange));
+    InFlagshipRange := (Ship <> nil) and (PointDistanceSquared(Position, Ship.Position) < Sqr(Ship.GetRadarRange));
   end;
   if InFlagshipRange then
   begin
@@ -1657,9 +1500,7 @@ begin
     for I := 1 to WeaponCount do
     begin
       Weapon := Weapons[I];
-      if IsEquipmentUsable(Weapon)
-          and (not (Weapon.GetWeaponInfo.ShotType in [wstTorpedo..wstRocket])
-              or (Weapon.Ammo > 0)) then
+      if IsEquipmentUsable(Weapon) and (not (Weapon.GetWeaponInfo.ShotType in [wstTorpedo..wstRocket]) or (Weapon.Ammo > 0)) then
       begin
         Range := GetWeaponRange(Weapon);
         if (Range < MinRange) or (MinRange < 0) then
@@ -1679,11 +1520,7 @@ begin
         if MaxRange > Distance then
           Score := Score * RemapClamped(Distance, MinRange, MaxRange, 1.5, 1)
         else
-          Score :=
-              Score
-                  * Distance
-                  / (Speed + 1)
-                  * RemapClamped((Speed + 1) / (Ship.Speed + 1), 0.5, 2, 0.25, 1);
+          Score := Score * Distance / (Speed + 1) * RemapClamped((Speed + 1) / (Ship.Speed + 1), 0.5, 2, 0.25, 1);
         if Ship is TKling then
         begin
           if (Ship as TKling).KlingType = ktBertor then
@@ -1701,9 +1538,7 @@ begin
     if BestShip <> nil then
       EnemyShip := BestShip;
   end
-  else if (EnemyShip = nil)
-      or (EnemyShip.CurrentStar <> CurrentStar)
-      or (EnemyShip.ConsecutiveDockedDays > 3) then
+  else if (EnemyShip = nil) or (EnemyShip.CurrentStar <> CurrentStar) or (EnemyShip.ConsecutiveDockedDays > 3) then
     if UsableWeaponCount <> 0 then
     begin
       BestChance := -1;
@@ -1711,9 +1546,7 @@ begin
       for I := 0 to CurrentStar.Ships.Count - 1 do
       begin
         Ship := CurrentStar.Ships[I];
-        if Ship.InNormalSpace
-            and (RelationToShip(Ship) < RelationBadMin)
-            and (TruceShip <> Ship) then
+        if Ship.InNormalSpace and (RelationToShip(Ship) < RelationBadMin) and (TruceShip <> Ship) then
         begin
           if Ship.CurrentStanding in [ssDominator, ssPirateMilitary] then
           begin
@@ -1721,8 +1554,7 @@ begin
             if ChanceToWin(Ship) > 1 then
               Exit;
           end
-          else if (LiberationGroup = nil)
-              or ((GetPlayer = Ship) and (Ship.CurrentStanding = ssPirateActive)) then
+          else if (LiberationGroup = nil) or ((GetPlayer = Ship) and (Ship.CurrentStanding = ssPirateActive)) then
           begin
             Chance := ChanceToWin(Ship);
             TravelTime := PointDistance(Position, Ship.Position) / (Speed + 1) + 0.1;
@@ -1769,15 +1601,13 @@ begin
     begin
       if EnemyShip.CurrentPlanet <> nil then
       begin
-        if (EnemyShip is TRanger)
-            and (Cardinal((EnemyShip as TRanger).PrisonTermRemaining) > 0) then
+        if (EnemyShip is TRanger) and ((EnemyShip as TRanger).PrisonTermRemaining > 0) then
         begin
           EnemyShip := nil;
           OrderNone(False);
           Exit;
         end;
-        if (EnemyShip is TPirate)
-            and (Cardinal((EnemyShip as TPirate).PrisonTermRemaining) > 0) then
+        if (EnemyShip is TPirate) and ((EnemyShip as TPirate).PrisonTermRemaining > 0) then
         begin
           EnemyShip := nil;
           OrderNone(False);
@@ -1819,9 +1649,7 @@ var
     begin
       Weapon := Ship.Weapons[I];
       // Native uses the flagship's usability check for other ships' weapons.
-      if IsEquipmentUsable(Weapon)
-          and (not (Weapon.GetWeaponInfo.ShotType in [wstTorpedo..wstRocket])
-              or (Weapon.Ammo > 0)) then
+      if IsEquipmentUsable(Weapon) and (not (Weapon.GetWeaponInfo.ShotType in [wstTorpedo..wstRocket]) or (Weapon.Ammo > 0)) then
       begin
         Range := Ship.GetWeaponRange(Weapon);
         if (Minimum > Range) or (Minimum < 0) then
@@ -1841,9 +1669,7 @@ var
     for I := 1 to Ship.WeaponCount do
     begin
       Weapon := Ship.Weapons[I];
-      if IsEquipmentUsable(Weapon)
-          and (not (Weapon.GetWeaponInfo.ShotType in [wstTorpedo..wstRocket])
-              or (Weapon.Ammo > 0)) then
+      if IsEquipmentUsable(Weapon) and (not (Weapon.GetWeaponInfo.ShotType in [wstTorpedo..wstRocket]) or (Weapon.Ammo > 0)) then
         case Weapon.GetWeaponInfo.ShotType of
           wstChain: Inc(Result);
           wstSplash, wstTorpedo, wstMissile: Inc(Result, 2);
@@ -1892,14 +1718,7 @@ var
   function EvaluatePosition(Point: TPointF): Single;
   var
     Ship: TShip;
-    AttackPotential,
-    SupportPotential,
-    IncomingStrength,
-    NodeValue,
-    Benefit,
-    Risk,
-    Threat,
-    BestEnemyPotential: Single;
+    AttackPotential, SupportPotential, IncomingStrength, NodeValue, Benefit, Risk, Threat, BestEnemyPotential: Single;
     Distance, HookRange: Single;
     Minimum, Maximum: Integer;
     ShipDistance, Attack: Single;
@@ -1916,9 +1735,7 @@ var
       Ship := Enemies[I];
       GetWeaponRangeBounds(Ship, Minimum, Maximum);
       ShipDistance := PointDistance(Point, Ship.Position);
-      Attack :=
-          Ship.CalculateAttackStrength
-              * (1 + AreaWeaponScore(Ship) * (0.1 * RemapClamped(SupportWeight, 0, 2, 0.1, 1)));
+      Attack := Ship.CalculateAttackStrength * (1 + AreaWeaponScore(Ship) * (0.1 * RemapClamped(SupportWeight, 0, 2, 0.1, 1)));
       Threat := Attack * RemapClamped(ShipDistance, Minimum, Maximum, 1, 0);
       if Attack * 0.99 > Threat then
         Threat := Threat + (Attack - Threat) * Ship.Speed / (Ship.Speed + ShipDistance - Minimum);
@@ -1931,9 +1748,7 @@ var
       Threat :=
           Threat
               / (Max(OwnAttack, Ship.CalculateDefenseStrength)
-                  * (1
-                      + Ship.GetRepairStrengthFactor
-                          * (0.1 * RemapClamped(SupportWeight, 0, 2, 1, 0.1))));
+                  * (1 + Ship.GetRepairStrengthFactor * (0.1 * RemapClamped(SupportWeight, 0, 2, 1, 0.1))));
       if (Ship is TKling) and ((Ship as TKling).KlingType = ktBertor) then
         Threat := 1.5 * Threat;
       if Threat > BestEnemyPotential then
@@ -1949,9 +1764,7 @@ var
       Attack := Ship.CalculateAttackStrength;
       SupportPotential :=
           SupportPotential
-              + Attack
-                  * RemapClamped(ShipDistance, OwnMinRange, OwnMaxRange, 1, 0)
-                  / Max(OwnAttack, Ship.CalculateDefenseStrength);
+              + Attack * RemapClamped(ShipDistance, OwnMinRange, OwnMaxRange, 1, 0) / Max(OwnAttack, Ship.CalculateDefenseStrength);
       Threat := Attack * RemapClamped(ShipDistance, Minimum, Maximum, 1, 0);
       Attack := Attack - Threat;
       if Attack > Threat * 0.01 then
@@ -1962,9 +1775,7 @@ var
       for I := 0 to CurrentStar.Items.Count - 1 do
       begin
         Item := CurrentStar.Items[I];
-        if (Item is TProtoplasm)
-            and CanCargoHookHandleItem(Item, Self)
-            and not IsItemInPickupRange(Item) then
+        if (Item is TProtoplasm) and CanCargoHookHandleItem(Item, Self) and not IsItemInPickupRange(Item) then
         begin
           Distance := Sqrt(Sqr(Point.X - Item.Position.X) + Sqr(Point.Y - Item.Position.Y));
           HookRange := GetCargoHookRange;
@@ -1981,8 +1792,7 @@ var
       NodeValue := NodeValue * 2;
     if EnemiesInRange > 0 then
     begin
-      Benefit :=
-          AttackPotential * AttackWeight + 0.05 * NodeValue + SupportPotential * SupportWeight;
+      Benefit := AttackPotential * AttackWeight + 0.05 * NodeValue + SupportPotential * SupportWeight;
       Risk := IncomingStrength / OwnDefense * FearWeight;
     end
     else
@@ -1991,14 +1801,7 @@ var
       Risk := 0;
     end;
     Distance := Sqrt(Sqr(Point.X) + Sqr(Point.Y));
-    Benefit :=
-        Benefit
-            * RemapClamped(
-                Distance,
-                CurrentStar.MapDiameter * 0.7,
-                CurrentStar.MapDiameter * 1.2,
-                1,
-                0.5);
+    Benefit := Benefit * RemapClamped(Distance, CurrentStar.MapDiameter * 0.7, CurrentStar.MapDiameter * 1.2, 1, 0.5);
     if Distance > CurrentStar.MapDiameter * 1.2 then
       Benefit := CurrentStar.MapDiameter * Benefit * 1.2 / Distance;
     Result := Benefit - Risk;
@@ -2014,8 +1817,7 @@ var
           RemapClamped(CargoFreeSpace, 0, GetHull.Weight div 4, 0.5, 1)
               * (3 / (EnemiesInRange + 2))
               * RemapClamped(GetHull.HullPoints, 0, GetHull.Weight div 2, 0.1, 1);
-      while (50 - 90 * Factor > GetCombatStatusStrength(cseBWBuff))
-          and (GetCarriedNodeCount >= Int64(50)) do
+      while (50 - 90 * Factor > GetCombatStatusStrength(cseBWBuff)) and (GetCarriedNodeCount >= Int64(50)) do
       begin
         ConsumeNodes(50);
         AddCombatStatusStrength(cseBWBuff, 20, nil);
@@ -2038,9 +1840,7 @@ begin
       if GetRelationLevelToShip(Ship) <= rlHostile then
         Enemies.Add(Ship)
       else if (GetRelationLevelToShip(Ship) > rlNormal)
-          and ((Ship is TWarrior)
-              or ((Ship.EnemyShip <> nil)
-                  and (GetRelationLevelToShip(Ship.EnemyShip) <= rlHostile))) then
+          and ((Ship is TWarrior) or ((Ship.EnemyShip <> nil) and (GetRelationLevelToShip(Ship.EnemyShip) <= rlHostile))) then
         Allies.Add(Ship);
   end;
   GetWeaponRangeBounds(Self, OwnMinRange, OwnMaxRange);
@@ -2074,17 +1874,14 @@ begin
   end;
   BoostWithNodes;
   AttackWeight := 1;
-  SupportWeight :=
-      RemapClamped(AllyAreaScore * EnemyRepair - EnemyAreaScore * AllyRepair, -100, 100, -2, 2);
+  SupportWeight := RemapClamped(AllyAreaScore * EnemyRepair - EnemyAreaScore * AllyRepair, -100, 100, -2, 2);
   FearWeight := RemapClamped(GetHull.HullPoints, 0, GetHull.Weight, 2, 0.75);
   BestShip := nil;
   BestShipScore := 0;
   for I := 0 to Allies.Count - 1 do
   begin
     Ship := Allies[I];
-    Score :=
-        EvaluatePosition(Ship.Position)
-            / (Trunc(PointDistance(Ship.Position, Position) / (Speed + 1)) + 1);
+    Score := EvaluatePosition(Ship.Position) / (Trunc(PointDistance(Ship.Position, Position) / (Speed + 1)) + 1);
     if (Score > BestShipScore) or (BestShip = nil) then
     begin
       BestShipScore := Score;
@@ -2094,9 +1891,7 @@ begin
   for I := 0 to Enemies.Count - 1 do
   begin
     Ship := Enemies[I];
-    Score :=
-        EvaluatePosition(Ship.Position)
-            / (Trunc(PointDistance(Ship.Position, Position) / (Speed + 1)) + 1);
+    Score := EvaluatePosition(Ship.Position) / (Trunc(PointDistance(Ship.Position, Position) / (Speed + 1)) + 1);
     if (Score > BestShipScore) or (BestShip = nil) then
     begin
       BestShipScore := Score;
@@ -2116,8 +1911,7 @@ begin
     Candidate.X := Cos(HeadingDegreesToRadians(Angle)) * RandomDistance + Position.X;
     Candidate.Y := Sin(HeadingDegreesToRadians(Angle)) * RandomDistance + Position.Y;
     Candidate := ProjectOutsideStar(Candidate);
-    Score :=
-        EvaluatePosition(Candidate) / (Trunc(PointDistance(Candidate, Position) / (Speed + 1)) + 1);
+    Score := EvaluatePosition(Candidate) / (Trunc(PointDistance(Candidate, Position) / (Speed + 1)) + 1);
     if Score > BestPositionScore then
     begin
       BestPositionScore := Score;
@@ -2151,9 +1945,7 @@ begin
   for I := 0 to Galaxy.Stars.Count - 1 do
   begin
     Star := Galaxy.Stars[I];
-    if (Star.ControlFaction = sfCoalition)
-        and (Star.Status.CustomFaction = '')
-        and (Star.ConstellationGraphIndex <> 20) then
+    if (Star.ControlFaction = sfCoalition) and (Star.Status.CustomFaction = '') and (Star.ConstellationGraphIndex <> 20) then
     begin
       FlagshipFactor := 1;
       GarrisonStrength := 0;
@@ -2178,9 +1970,7 @@ begin
             Warrior := Planet.Warriors[K];
             if Warrior = Self then
               Continue;
-            GarrisonStrength :=
-                GarrisonStrength
-                    + RemapClamped(Warrior.Strength, 0.1 * Strength, 10 * Strength, 0.3, 3);
+            GarrisonStrength := GarrisonStrength + RemapClamped(Warrior.Strength, 0.1 * Strength, 10 * Strength, 0.3, 3);
             if Warrior.WarriorType = wtFlagship then
               if Warrior.PilotRace = PilotRace then
                 FlagshipFactor := FlagshipFactor * 0.05
@@ -2194,7 +1984,7 @@ begin
         NearbyThreat := 0;
         for J := 1 to Galaxy.Stars.Count div 5 do
         begin
-          NearbyStar := TObject(Star.StarDistances[J].Star) as TStar;
+          NearbyStar := Star.StarDistances[J].Star;
           if NearbyStar.ConstellationGraphIndex <> 20 then
             if NearbyStar.Status.CustomFaction <> '' then
               NearbyThreat := NearbyThreat + 5 / (J + 5)
@@ -2205,8 +1995,7 @@ begin
                 sfDominators: NearbyThreat := NearbyThreat + 5 / (J + 5);
               end;
         end;
-        Score :=
-            RacePlanetCount * GarrisonStrength * NearbyThreat * FlagshipFactor * (StationCount + 3);
+        Score := RacePlanetCount * GarrisonStrength * NearbyThreat * FlagshipFactor * (StationCount + 3);
         if HomePlanet.CurrentStar = Star then
           Score := Score * 1.3;
         if (Score > BestScore) or (BestStar = nil) then
@@ -2274,11 +2063,7 @@ begin
   end;
 end;
 
-function TWarrior.BuildMoneyExtortionResponse(
-    OtherShip: TShip;
-    var Response: WideString;
-    DemandedAmount: Integer
-): Boolean;
+function TWarrior.BuildMoneyExtortionResponse(OtherShip: TShip; var Response: WideString; DemandedAmount: Integer): Boolean;
 begin
   Result := False;
   if OtherShip is TRanger then
@@ -2298,11 +2083,7 @@ begin
   Response := LookupVisibleTalkText('Talk.Goods.' + GetTypeNameKey + 'No', OtherShip);
 end;
 
-function TWarrior.BuildTrucePaymentResponse(
-    OtherShip: TShip;
-    var Response: WideString;
-    OfferedAmount: Integer
-): Boolean;
+function TWarrior.BuildTrucePaymentResponse(OtherShip: TShip; var Response: WideString; OfferedAmount: Integer): Boolean;
 var
   NextDemandTurn: Integer;
 
@@ -2388,11 +2169,7 @@ begin
     Response := LookupVisibleTalkText('Talk.Truce.' + GetTypeNameKey + 'No', OtherShip);
 end;
 
-function TWarrior.BuildAttackRequestResponse(
-    Requester: TShip;
-    var Response: WideString;
-    Target: TShip
-): Boolean;
+function TWarrior.BuildAttackRequestResponse(Requester: TShip; var Response: WideString; Target: TShip): Boolean;
 var
   I, HostileCount: Integer;
   Ship: TShip;
@@ -2427,20 +2204,13 @@ begin
           Break;
       end;
     end;
-  if (OrderTarget = Target)
-      and (GetRelationLevelToShip(Target) = rlHostile)
-      and (HostileCount <= 1) then
+  if (OrderTarget = Target) and (GetRelationLevelToShip(Target) = rlHostile) and (HostileCount <= 1) then
     AcceptRequest
   else if (LiberationGroup <> nil) and (Requester.LiberationGroup <> LiberationGroup) then
     Response := LookupVisibleTalkText('Talk.Attack.' + GetTypeNameKey + 'HaveBusiness', Requester)
   else if TruceShip = Target then
     Response :=
-        FormatText1(
-            LookupVisibleTalkText('Talk.Attack.WeAlreadyHavePact', Requester),
-            TextHighlightColorTag,
-            '<Target>',
-            Target.GetName
-        )
+        FormatText1(LookupVisibleTalkText('Talk.Attack.WeAlreadyHavePact', Requester), TextHighlightColorTag, '<Target>', Target.GetName)
   else if RelationToShip(Target) >= RelationNormalMin then
   begin
     if not (Target is TTranclucator) then
@@ -2450,16 +2220,13 @@ begin
     else if TTranclucator(Target).OwnerShip = Requester then
       Response := LookupVisibleTalkText('Talk.Attack.' + GetTypeNameKey + 'ItsYourTranc', Requester)
     else
-      Response :=
-          LookupVisibleTalkText('Talk.Attack.' + GetTypeNameKey + 'WeFriendsTranc', Requester);
+      Response := LookupVisibleTalkText('Talk.Attack.' + GetTypeNameKey + 'WeFriendsTranc', Requester);
   end
   else if AcceptsRansomDemandFrom(Target) or RecomputeFearState then
     Response := LookupVisibleTalkText('Talk.Attack.' + GetTypeNameKey + 'Fear', Requester)
   else if not TrustsAttackRequester(Requester) then
     Response := LookupVisibleTalkText('Talk.Attack.' + GetTypeNameKey + 'Suspect', Requester)
-  else if HasLockedOrFollowOrder
-      and (Requester is TNormalShip)
-      and ((Requester as TNormalShip).Rank < Rank) then
+  else if HasLockedOrFollowOrder and (Requester is TNormalShip) and ((Requester as TNormalShip).Rank < Rank) then
     Response := LookupVisibleTalkText('Talk.Attack.' + GetTypeNameKey + 'HaveBusiness', Requester)
   else if HostileCount > 0 then
     Response := LookupVisibleTalkText('Talk.Attack.' + GetTypeNameKey + 'HaveBusiness', Requester)
@@ -2467,21 +2234,13 @@ begin
     AcceptRequest;
 end;
 
-function TWarrior.AcceptPartnershipOffer(
-    OtherShip: TShip;
-    var Response: WideString;
-    PaymentAmount: Integer
-): Boolean;
+function TWarrior.AcceptPartnershipOffer(OtherShip: TShip; var Response: WideString; PaymentAmount: Integer): Boolean;
 begin
   Result := False;
   Response := 'Not supporting';
 end;
 
-function TWarrior.BuildPartnershipOfferResponse(
-    OtherShip: TShip;
-    var Response: WideString;
-    PaymentAmount: Integer
-): Boolean;
+function TWarrior.BuildPartnershipOfferResponse(OtherShip: TShip; var Response: WideString; PaymentAmount: Integer): Boolean;
 begin
   Result := False;
   Response := 'Not supporting';
@@ -2563,18 +2322,13 @@ begin
     FragilityScale := FragilityScale * 0.5;
   HullValueScale := 2;
   DesiredFreeFraction := Max(0.01, Min(0.99, GetDesiredCargoFreeSpace / Max(100, GetHull.Weight)));
-  MoneyPenalty :=
-      Sqr((1 / Max(0.01, SmoothedMoneyFraction) - 1) / (1 / DesiredMoneyFraction - 1))
-          / Max(SmoothedWealth * 0.05, 1000);
+  MoneyPenalty := Sqr((1 / Max(0.01, SmoothedMoneyFraction) - 1) / (1 / DesiredMoneyFraction - 1)) / Max(SmoothedWealth * 0.05, 1000);
   EffectivenessScale := 2 / Max(10, SmoothedEquipmentEffectiveness);
-  WeightPenalty :=
-      Sqr((1 / Max(0.01, SmoothedFreeCapacityFraction) - 1) / (1 / DesiredFreeFraction - 1))
-          / Max(10, GetHull.Weight * 0.1);
+  WeightPenalty := Sqr((1 / Max(0.01, SmoothedFreeCapacityFraction) - 1) / (1 / DesiredFreeFraction - 1)) / Max(10, GetHull.Weight * 0.1);
   if OwnerId = Item.OwnerId then
     EffectivenessScale := EffectivenessScale * 1.1;
   MoneyPenalty := MoneyPenalty * 0.01 * (100 + SeededRandomIntRange(-10, 10, Id + Seed));
-  EffectivenessScale :=
-      EffectivenessScale * 0.01 * (100 + SeededRandomIntRange(-10, 10, Seed + 3 * Id));
+  EffectivenessScale := EffectivenessScale * 0.01 * (100 + SeededRandomIntRange(-10, 10, Seed + 3 * Id));
   WeightPenalty := WeightPenalty * 0.01 * (100 + SeededRandomIntRange(-10, 10, Seed + 5 * Id));
   if WarriorType = wtFlagship then
     EffectivenessScale := 2 * EffectivenessScale;
@@ -2595,16 +2349,12 @@ begin
   end;
   if Item.ItemType <> t_Hull then
     Result :=
-        Effectiveness
-                * EffectivenessScale
-                * (1 + (2 - TEquipment(Item).GetFragilityFactor(NoFlags)) * FragilityScale)
+        Effectiveness * EffectivenessScale * (1 + (2 - TEquipment(Item).GetFragilityFactor(NoFlags)) * FragilityScale)
             - Item.Weight * WeightPenalty
             - Price * MoneyPenalty
   else
     Result :=
-        (Item.Weight * HullValueScale / Max(0.01, TEquipment(Item).GetFragilityFactor(NoFlags))
-                    + Effectiveness)
-                * EffectivenessScale
+        (Item.Weight * HullValueScale / Max(0.01, TEquipment(Item).GetFragilityFactor(NoFlags)) + Effectiveness) * EffectivenessScale
             + Item.Weight * WeightPenalty
             - Price * 0.25 * MoneyPenalty;
 end;
@@ -2624,42 +2374,24 @@ begin
     bonJump: Result := Value * 5;
     bonRadar: Result := (0.025 * Value) * (1 + ShortInt(WarriorType = wtFlagship) * 0.5);
     bonScan: Result := Value * 3 + Value * 30 * CountWeaponsByDamageFlags(ScannerFlags);
-    bonDroid:
-      Result :=
-          Value
-              * 10
-              / Max(0.1, GetHull.GetFragilityFactor(NoFlags))
-              * (1 + ShortInt(WarriorType = wtFlagship) * 0.5);
-    bonHook:
-      Result :=
-          (Min(Value, HullBaseSize * EquipmentSizeFactors[5]) + Value * 0.1)
-              * 1.3
-              * ShortInt(WarriorType = wtFlagship);
+    bonDroid: Result := Value * 10 / Max(0.1, GetHull.GetFragilityFactor(NoFlags)) * (1 + ShortInt(WarriorType = wtFlagship) * 0.5);
+    bonHook: Result := (Min(Value, HullBaseSize * EquipmentSizeFactors[5]) + Value * 0.1) * 1.3 * ShortInt(WarriorType = wtFlagship);
     bonDef: Result := Value * 5 * 100 / Max(5, 100 - Value) * 45 / Max(5, 45 - Value);
     bonWEnergy: Result := Value * 12;
     bonWSplinter: Result := Value * 12;
-    bonWMissile:
-      Result :=
-          Value
-              * 12
-              * (0.1 + ShortInt(GetRadarRange > 0) * 0.9)
-              * (1 - Ord(WarriorType = wtFlagship));
+    bonWMissile: Result := Value * 12 * (0.1 + ShortInt(GetRadarRange > 0) * 0.9) * (1 - Ord(WarriorType = wtFlagship));
     bonWRadius:
       if WarriorType = wtFlagship then
         Result := Value * 3
       else
         Result := Value * 1.5 * Sqr(Max(100, SmoothedEnemySpeed) / Max(100, SmoothedSpeed));
     bonHookRadius: Result := Value * 1.0 * ShortInt(WarriorType = wtFlagship);
-    bonMass:
-      Result :=
-          RemapClamped(Value, HullMassEvaluationStart, HullMassEvaluationEnd, 1, 0.333) * 1000;
+    bonMass: Result := RemapClamped(Value, HullMassEvaluationStart, HullMassEvaluationEnd, 1, 0.333) * 1000;
     bonSlotRadar:
       if (GetSlotCount(sskRadar) = 0) and (Value > 0) then
         Result := WarriorSlotBonusWeights[BonusKind] * 0.3
       else if (GetRadar <> nil) and (Value < 0) then
-        Result :=
-            -WarriorSlotBonusWeights[BonusKind]
-                - WarriorSlotBonusWeights[bonSlotWeapon] * CountMissileWeapons
+        Result := -WarriorSlotBonusWeights[BonusKind] - WarriorSlotBonusWeights[bonSlotWeapon] * CountMissileWeapons
       else if (GetSlotCount(sskRadar) = 1) and (Value < 0) then
         Result := WarriorSlotBonusWeights[BonusKind] * -0.3;
     bonSlotScaner:
@@ -2667,10 +2399,7 @@ begin
         Result := WarriorSlotBonusWeights[BonusKind] * 0.3
       else if (GetScanner <> nil) and (Value < 0) then
         Result :=
-            -WarriorSlotBonusWeights[BonusKind]
-                - CountWeaponsByDamageFlags(ScannerFlags)
-                    * 0.1
-                    * WarriorSlotBonusWeights[bonSlotWeapon]
+            -WarriorSlotBonusWeights[BonusKind] - CountWeaponsByDamageFlags(ScannerFlags) * 0.1 * WarriorSlotBonusWeights[bonSlotWeapon]
       else if (GetSlotCount(sskScanner) = 1) and (Value < 0) then
         Result := WarriorSlotBonusWeights[BonusKind] * -0.3;
     bonSlotDroid:
@@ -2694,10 +2423,7 @@ begin
       if Value < 0 then
         Result := Max(Value, -GetSlotCount(sskWeapon)) * WarriorSlotBonusWeights[BonusKind];
       if CountEquippedWeapons > Max(Value + GetSlotCount(sskWeapon), 1) then
-        Result :=
-            Result
-                - (WarriorSlotBonusWeights[BonusKind] * 0.6)
-                    * (CountEquippedWeapons - Max(1, Value + GetSlotCount(sskWeapon)));
+        Result := Result - (WarriorSlotBonusWeights[BonusKind] * 0.6) * (CountEquippedWeapons - Max(1, Value + GetSlotCount(sskWeapon)));
     end;
     bonSlotForsage:
       if (GetSlotCount(sskAfterburner) = 0) and (Value > 0) then
@@ -2707,38 +2433,14 @@ begin
     bonSkill1..bonSkill6:
     begin
       if Value > 0 then
+        Result := Min(6 - GetEffectiveSkillLevel(EquipmentBonusSkills[BonusKind]), Value) * WarriorSkillBonusWeights[BonusKind];
+      if (Value > 0) and (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[BonusKind]) > 6) then
         Result :=
-            Min(
-                    6
-                        - GetEffectiveSkillLevel(
-                            EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)]),
-                    Value)
-                * WarriorSkillBonusWeights[BonusKind];
-      if (Value > 0)
-          and (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)])
-              > 6) then
-        Result :=
-            Result
-                + (WarriorSkillBonusWeights[BonusKind] * 0.05)
-                    * (Value
-                        + GetEffectiveSkillLevel(
-                            EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)])
-                        - 6);
+            Result + (WarriorSkillBonusWeights[BonusKind] * 0.05) * (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[BonusKind]) - 6);
       if Value < 0 then
-        Result :=
-            Min(
-                    GetEffectiveSkillLevel(EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)]),
-                    -Value)
-                * -WarriorSkillBonusWeights[BonusKind];
-      if (Value < 0)
-          and (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)])
-              < 0) then
-        Result :=
-            Result
-                + (WarriorSkillBonusWeights[BonusKind] * 0.03)
-                    * (Value
-                        + GetEffectiveSkillLevel(
-                            EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)]));
+        Result := Min(GetEffectiveSkillLevel(EquipmentBonusSkills[BonusKind]), -Value) * -WarriorSkillBonusWeights[BonusKind];
+      if (Value < 0) and (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[BonusKind]) < 0) then
+        Result := Result + (WarriorSkillBonusWeights[BonusKind] * 0.03) * (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[BonusKind]));
     end;
   else
     Result := 0;
@@ -2748,18 +2450,12 @@ begin
         Result
             * 0.01
             * (100 + SeededRandomIntRange(-30, 30, Seed + 131 * Ord(BonusKind)))
-            * RaceSkillEvaluationFactors[
-                PilotRace,
-                EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)]]
+            * RaceSkillEvaluationFactors[PilotRace, EquipmentBonusSkills[BonusKind]]
   else
     Result := Result * 0.01 * (100 + SeededRandomIntRange(-10, 10, Seed + 131 * Ord(BonusKind)));
 end;
 
-function TWarrior.EvaluateWeaponDamage(
-    Weapon: TWeapon;
-    IncludeAdditiveBonuses: Boolean;
-    BaseDamage: Single
-): Single;
+function TWarrior.EvaluateWeaponDamage(Weapon: TWeapon; IncludeAdditiveBonuses: Boolean; BaseDamage: Single): Single;
 const
   ScannerFlags = [dkScanBonus..dkDroidBlock];
   ShockFlags = [dkShock];
@@ -2773,15 +2469,7 @@ begin
   Flags := Weapon.GetDamageFlags;
   if (Flags * ScannerFlags <> []) and (GetScanner <> nil) and (GetRadar <> nil) then
     ScannerFactor :=
-        RemapClamped(
-            GetScannerPower
-                - DefenseDamageFactorToPercent(GetGeneratedDefenseDamageFactor(Galaxy.TechLevel))
-                + 1,
-            -5,
-            10,
-            0.1,
-            2
-        )
+        RemapClamped(GetScannerPower - DefenseDamageFactorToPercent(GetGeneratedDefenseDamageFactor(Galaxy.TechLevel)) + 1, -5, 10, 0.1, 2)
   else
     ScannerFactor := 0;
   Result := BaseDamage * GetWeaponArtefactDamageFactor(Weapon);
@@ -2812,40 +2500,20 @@ begin
       Result := Result + ShotTotal * 2;
     end;
   end;
-  SpeedFactor :=
-      Max(100, SmoothedEnemySpeed)
-          * GetHull.Weight
-          / (HullBaseSize * Max(100, SmoothedSpeed * EquipmentSizeFactors[1]));
+  SpeedFactor := Max(100, SmoothedEnemySpeed) * GetHull.Weight / (HullBaseSize * Max(100, SmoothedSpeed * EquipmentSizeFactors[1]));
   case Weapon.GetWeaponInfo.ShotType of
     wstRocket: Result := Result * 1.1 * Weapon.GetShotCount * (1 + StatusFactor);
-    wstMissile:
-      Result :=
-          Result
-              * (1.1 + Weapon.GetWeaponInfo.SecondaryDamageRadius * 1.0 * 0.01 + StatusFactor)
-              * Weapon.GetShotCount;
-    wstTorpedo:
-      Result :=
-          Result * (1 + Weapon.GetWeaponInfo.SecondaryDamageRadius * 1.0 * 0.01 + StatusFactor);
+    wstMissile: Result := Result * (1.1 + Weapon.GetWeaponInfo.SecondaryDamageRadius * 1.0 * 0.01 + StatusFactor) * Weapon.GetShotCount;
+    wstTorpedo: Result := Result * (1 + Weapon.GetWeaponInfo.SecondaryDamageRadius * 1.0 * 0.01 + StatusFactor);
     wstChain: Result := Result * (1.1 + (Weapon.GetShotCount - 1) * 0.2) * (1 + StatusFactor);
-    wstSplash:
-      Result :=
-          Result
-              * (1
-                  + Weapon.GetWeaponInfo.SecondaryDamageRadius * 1.5 * 0.01 * SpeedFactor
-                  + StatusFactor);
-    wstExploder:
-      Result :=
-          Result
-              * (1
-                  + Weapon.GetWeaponInfo.SecondaryDamageRadius * 0.8 * 0.01 * SpeedFactor
-                  + StatusFactor);
+    wstSplash: Result := Result * (1 + Weapon.GetWeaponInfo.SecondaryDamageRadius * 1.5 * 0.01 * SpeedFactor + StatusFactor);
+    wstExploder: Result := Result * (1 + Weapon.GetWeaponInfo.SecondaryDamageRadius * 0.8 * 0.01 * SpeedFactor + StatusFactor);
     wstAreaDamage: Result := Result * (1 + Weapon.Range * 2.2 * 0.01 * SpeedFactor + StatusFactor);
   else
     Result := Result * (1 + StatusFactor);
   end;
   Result := Result * Weapon.GetAttackCount;
-  Result :=
-      Result * 0.01 * (100 + SeededRandomIntRange(-20, 20, Seed + Weapon.GetWeaponInfo.TypeHash));
+  Result := Result * 0.01 * (100 + SeededRandomIntRange(-20, 20, Seed + Weapon.GetWeaponInfo.TypeHash));
 end;
 
 function TWarrior.AcceptPickupItem(Item: TItem): Boolean;
@@ -2874,9 +2542,7 @@ begin
     Result := False;
     Exit;
   end;
-  Result :=
-      (30 * Speed >= Distance)
-          or (Item.Cost >= RemapClamped(Distance / Speed, 1, 10, 0.01, 0.05) * Wealth);
+  Result := (30 * Speed >= Distance) or (Item.Cost >= RemapClamped(Distance / Speed, 1, 10, 0.01, 0.05) * Wealth);
 end;
 
 procedure TWarrior.RefreshCurrentStanding;

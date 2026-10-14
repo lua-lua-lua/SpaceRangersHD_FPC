@@ -205,29 +205,14 @@ type
   );
 
   {$Z1}
-  TAwardKind = (
-      atLiberation = 0,
-      atAccomplishment = 1,
-      atSecretMission = 2,
-      atCowardice = 3,
-      atPerfidy = 4,
-      atPlanetBattle = 5
-  );
+  TAwardKind = (atLiberation = 0, atAccomplishment = 1, atSecretMission = 2, atCowardice = 3, atPerfidy = 4, atPlanetBattle = 5);
 
   {$Z4}
   TScriptStandingOverrideMode = (ssmNormal = 0, ssmCustomFaction = 1, ssmFixed = 2);
 
   {$Z1}
-  TGreetingShipCategory = (
-      gscTransport = 0,
-      gscLiner = 1,
-      gscDiplomat = 2,
-      gscRanger = 3,
-      gscPirate = 4,
-      gscWarrior = 5,
-      gscKling = 6,
-      gscPirateClan = 7
-  );
+  TGreetingShipCategory =
+      (gscTransport = 0, gscLiner = 1, gscDiplomat = 2, gscRanger = 3, gscPirate = 4, gscWarrior = 5, gscKling = 6, gscPirateClan = 7);
 
   {$Z1}
   TCoalitionProject = (
@@ -246,33 +231,18 @@ type
   );
 
   {$Z1}
-  TTalkKind = (
-      tkMoneyDemand = 0,
-      tkGoodsDemand = 1,
-      tkTruceOffer = 2,
-      tkAttack = 3,
-      tkPartnerBreak = 4,
-      tkPartnerEnd = 5,
-      tkPartnerRiot = 6
-  );
+  TTalkKind =
+      (tkMoneyDemand = 0, tkGoodsDemand = 1, tkTruceOffer = 2, tkAttack = 3, tkPartnerBreak = 4, tkPartnerEnd = 5, tkPartnerRiot = 6);
 
   {$Z1}
-  TExperienceSource =
-      (esUnscaled = 0, esDominators = 1, esPirates = 2, esNormalShips = 3, esTraderCareer = 4);
+  TExperienceSource = (esUnscaled = 0, esDominators = 1, esPirates = 2, esNormalShips = 3, esTraderCareer = 4);
 
   TPercent = 0..100;
 
   TShipRank = 0..7;
 
   {$Z1}
-  TPilotSkill = (
-      psAccuracy = 0,
-      psManeuverability = 1,
-      psTechnical = 2,
-      psTrading = 3,
-      psCharisma = 4,
-      psLeadership = 5
-  );
+  TPilotSkill = (psAccuracy = 0, psManeuverability = 1, psTechnical = 2, psTrading = 3, psCharisma = 4, psLeadership = 5);
 
   {$Z1}
   TProgramIndex = (
@@ -304,16 +274,8 @@ type
   TGreetingCountMask = set of 0..15;
 
   {$Z1}
-  TWeaponShotType = (
-      wstNormal = 0,
-      wstChain = 1,
-      wstSplash = 2,
-      wstExploder = 3,
-      wstAreaDamage = 4,
-      wstTorpedo = 5,
-      wstMissile = 6,
-      wstRocket = 7
-  );
+  TWeaponShotType =
+      (wstNormal = 0, wstChain = 1, wstSplash = 2, wstExploder = 3, wstAreaDamage = 4, wstTorpedo = 5, wstMissile = 6, wstRocket = 7);
 
   TShipTypeMask = set of TShipType;
 
@@ -335,16 +297,7 @@ type
   TWeaponAvailabilityMask = set of TWeaponAvailability;
 
   {$Z1}
-  TKlingType = (
-      ktBoss = 0,
-      ktEquantor = 1,
-      ktUrgant = 2,
-      ktSmersh = 3,
-      ktMenoc = 4,
-      ktShtip = 5,
-      ktBertor = 6,
-      ktKlig = 7
-  );
+  TKlingType = (ktBoss = 0, ktEquantor = 1, ktUrgant = 2, ktSmersh = 3, ktMenoc = 4, ktShtip = 5, ktBertor = 6, ktKlig = 7);
 
   {$Z1}
   TDominatorSeries = (dsBlazer = 0, dsKeller = 1, dsTerron = 2);
@@ -390,8 +343,7 @@ type
   TPlanetEconomies = set of TPlanetEconomy;
 
   {$Z1}
-  TPlanetGovernment =
-      (pgAnarchy = 0, pgDictatorship = 1, pgMonarchy = 2, pgRepublic = 3, pgDemocracy = 4);
+  TPlanetGovernment = (pgAnarchy = 0, pgDictatorship = 1, pgMonarchy = 2, pgRepublic = 3, pgDemocracy = 4);
 
   TPlanetGovernments = set of TPlanetGovernment;
 
@@ -475,63 +427,51 @@ type
   TCargoHookLevelStatsTable = array[1..8] of TCargoHookLevelStats;
 
   {$Z1}
-  TDamageKind = (dkEnergy = 0, dkSplinter = 1, dkMissile = 2, dkDroidBlock = 19);
+  TDamageKind = (
+      dkEnergy = 0,
+      dkSplinter = 1,
+      dkMissile = 2,
+      dkDecelerate = 3,
+      dkDestruct = 4,
+      dkDrain = 5,
+      dkShock = 6,
+      dkAcid = 7,
+      dkMagnetic = 8,
+      dkDecelerateA = 9,
+      dkDecelerateAEx = 10,
+      dkUndefendable = 11,
+      dkNonLethal = 12,
+      dkScanBonus = 13,
+      dkBonusToDamaged = 14,
+      dkMoreDrop = 15,
+      dkDropCargo = 16,
+      dkReduceEngine = 17,
+      dkBlockWeapon = 18,
+      dkDroidBlock = 19
+  );
 
   TDamageFlagSet = set of TDamageKind;
 
 const
 
-  dkDecelerate = TDamageKind(3);
-
-  dkDestruct = TDamageKind(4);
-
-  dkDrain = TDamageKind(5);
-
-  dkShock = TDamageKind(6);
-
-  dkAcid = TDamageKind(7);
-
-  dkMagnetic = TDamageKind(8);
-
-  dkDecelerateA = TDamageKind(9);
-
-  dkDecelerateAEx = TDamageKind(10);
-
-  dkUndefendable = TDamageKind(11);
-
-  dkNonLethal = TDamageKind(12);
-
-  dkScanBonus = TDamageKind(13);
-
-  dkBonusToDamaged = TDamageKind(14);
-
-  dkMoreDrop = TDamageKind(15);
-
-  dkDropCargo = TDamageKind(16);
-
-  dkReduceEngine = TDamageKind(17);
-
-  dkBlockWeapon = TDamageKind(18);
-
   DamageNoDeltaMask = 1 shl 20;
-
-  EmptyDamageFlags = [dkEnergy..dkDroidBlock] - [dkEnergy..dkDroidBlock];
 
 type
 
   TItemTypeMask = set of 0..79;
 
   {$Z1}
-  TOwnerId = (
-      oiMaloc = 0,
-      oiPeleng = 1,
-      oiHuman = 2,
-      oiFeyan = 3,
-      oiGaal = 4,
-      oiDominator = 5,
-      oiUninhabited = 6,
-      oiPirate = 7
-  );
+  TItemLootPool = (ilpArcadeBattle = 0, ilpTreasure = 1, ilpReward = 2, ilpAnyAvailable = 3);
+
+  {$Z1}
+  TTransportType = (ttTransport = 0, ttLiner = 1, ttDiplomat = 2);
+
+  {$Z1}
+  TCombatStatusEffectType =
+      (cseShock = 0, cseAcid = 1, cseMagnetic = 2, cseWeaponBlock = 3, cseDroidBlock = 4, cseBWBuff = 5, cseBWRepairDebuff = 6);
+
+  {$Z1}
+  TOwnerId = (oiMaloc = 0, oiPeleng = 1, oiHuman = 2, oiFeyan = 3, oiGaal = 4, oiDominator = 5, oiUninhabited = 6, oiPirate = 7);
 
   TPlanetGoodsFactors = record
     PriceFactor: Double;
@@ -561,9 +501,9 @@ type
   TDominatorSeriesMask = set of TDominatorSeries;
 
   TPlanetOwnerMasks = packed record
-    Coalition: TOwnerMask;
-    Dominators: TOwnerMask;
-    PirateClan: TOwnerMask;
+  case Boolean of
+    False: (Coalition: TOwnerMask; Dominators: TOwnerMask; PirateClan: TOwnerMask;);
+    True: (ByFaction: array[TStarFaction] of TOwnerMask;);
   end;
 
   TOwnerRelationRow = array[TOwnerId] of Byte;
@@ -573,8 +513,7 @@ type
   TFactionStandingMasks = array[TStarFaction] of TShipStandings;
 
   {$Z1}
-  TQuestType =
-      (qtSendLetter = 0, qtKillShip = 1, qtPlanetQuest = 2, qtDefendSystem = 3, qtDefendShip = 4);
+  TQuestType = (qtSendLetter = 0, qtKillShip = 1, qtPlanetQuest = 2, qtDefendSystem = 3, qtDefendShip = 4);
 
   TQuestTypes = set of TQuestType;
 

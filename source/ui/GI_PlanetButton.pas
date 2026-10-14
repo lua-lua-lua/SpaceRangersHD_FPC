@@ -77,7 +77,7 @@ begin
   if not AllowsTouchActivation then
     Exit;
   inherited ProcessLeftButtonDown(KeyState, Point);
-  DispatchNamedEvent(1, Point.X, Point.Y);
+  DispatchNamedEvent(nceButtonDown, Point.X, Point.Y);
 end;
 
 procedure TPlanetButtonGI.LoadFromConfigPath(const Path: WideString);
@@ -89,17 +89,9 @@ procedure TPlanetButtonGI.LoadFromBlock(Block: TBlockParEC);
 begin
   TextLabel.SetActive(False);
   inherited LoadFromBlock(Block);
-  NormalPlanet.SetImage(
-      Block.GetParam('PN_Mask'),
-      Block.GetParam('PN_Image'),
-      Block.GetParam('PN_ImageLight')
-  );
+  NormalPlanet.SetImage(Block.GetParam('PN_Mask'), Block.GetParam('PN_Image'), Block.GetParam('PN_ImageLight'));
   SetSize(NormalPlanet.ClientSize);
-  HoverPlanet.SetImage(
-      Block.GetParam('PN_Mask'),
-      Block.GetParam('PA_Image'),
-      Block.GetParam('PA_ImageLight')
-  );
+  HoverPlanet.SetImage(Block.GetParam('PN_Mask'), Block.GetParam('PA_Image'), Block.GetParam('PA_ImageLight'));
   if Block.CountParams('Font') > 0 then
     TextLabel.SetFontName(Block.GetParam('Font'));
   if Block.CountParams('Text') > 0 then

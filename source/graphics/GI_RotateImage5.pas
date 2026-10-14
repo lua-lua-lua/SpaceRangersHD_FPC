@@ -63,6 +63,7 @@ var
 implementation
 
 uses
+  GameDiagnostics,
   GlobalsV,
   EC_Struct,
   SysUtils,
@@ -103,14 +104,18 @@ begin
   except
     on E: Exception do
     begin
-      AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
-      AppendLogLineThreadSafe('self=' + UIntToStr(PtrUInt(Self)));
-      AppendLogLineThreadSafe('FGBC=' + UIntToStr(PtrUInt(ImageCache)));
-      AppendLogLineThreadSafe('FRBC=' + UIntToStr(PtrUInt(RotationCache)));
-      AppendLogLineThreadSafe('FIR=' + UIntToStr(PtrUInt(RotatedImage)));
-      raise Exception.Create(
-          'Error in procedure TRotateImage5GI.Create, label = '
-              + IntToStr(RotateImageConstructionStage));
+      AddGameExceptionContext(
+          E,
+          'TRotateImage5GI.Create; stage='
+              + IntToStr(RotateImageConstructionStage)
+              + ', image cache=$'
+              + IntToHex(PtrUInt(ImageCache), SizeOf(Pointer) * 2)
+              + ', rotation cache=$'
+              + IntToHex(PtrUInt(RotationCache), SizeOf(Pointer) * 2)
+              + ', rotated image=$'
+              + IntToHex(PtrUInt(RotatedImage), SizeOf(Pointer) * 2)
+      );
+      raise;
     end;
   end;
   RotateImageConstructionStage := -1;
@@ -199,7 +204,11 @@ begin
               + IntToStr(Pivot.Y)
       );
     except
-      raise Exception.Create('Error in TRotateImage5GI.SetImage');
+      on E: Exception do
+      begin
+        AddGameExceptionContext(E, 'TRotateImage5GI.SetImage ' + Path);
+        raise;
+      end;
     end;
     Radius := SquaredDistanceToPoint(Pivot, 0, 0);
     Radius := Max(Radius, SquaredDistanceToPoint(Pivot, ImageSize.X, ImageSize.Y));
@@ -265,26 +274,8 @@ begin
         Quad[2].Y := BottomRightY[RenderedAngle];
         Quad[3].X := BottomLeftX[RenderedAngle];
         Quad[3].Y := BottomLeftY[RenderedAngle];
-        Direct3DDevice.CreateRenderTarget(
-            ClientSize.X,
-            ClientSize.Y,
-            D3DFMT_A8R8G8B8,
-            D3DMULTISAMPLE_NONE,
-            0,
-            False,
-            Surface,
-            nil
-        );
-        Direct3DDevice.CreateTexture(
-            ClientSize.X,
-            ClientSize.Y,
-            1,
-            0,
-            D3DFMT_A8R8G8B8,
-            D3DPOOL_SYSTEMMEM,
-            Texture,
-            nil
-        );
+        Direct3DDevice.CreateRenderTarget(ClientSize.X, ClientSize.Y, D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE, 0, False, Surface, nil);
+        Direct3DDevice.CreateTexture(ClientSize.X, ClientSize.Y, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, Texture, nil);
         if Surface <> nil then
         begin
           if Texture = nil then
@@ -303,7 +294,7 @@ begin
             Direct3DDevice.SetRenderTarget(0, OldSurface);
             Texture.GetSurfaceLevel(0, OldSurface);
             if Direct3DDevice.GetRenderTargetData(Surface, OldSurface) <> 0 then
-              AppendLogLineThreadSafe('GetRenderTargetData fail');
+              LogGameMessage(gllWarning, 'renderer', 'Reading rotated image pixels failed');
             OldSurface := nil;
             Surface := nil;
             Texture.LockRect(0, Locked, nil, 0);
@@ -311,9 +302,7 @@ begin
             begin
               Buffer := TGraphBufGR.Create(False);
               Buffer.AttachPixels(ClientSize.X, ClientSize.Y, Locked.Pitch, Locked.Bits);
-              Result :=
-                  Buffer.GetPixel32(Point.X - HitTestBounds.Left, Point.Y - HitTestBounds.Top)
-                      > $FFFFFF;
+              Result := Buffer.GetPixel32(Point.X - HitTestBounds.Left, Point.Y - HitTestBounds.Top) > $FFFFFF;
               Buffer.Free;
             end;
             Texture := nil;
@@ -322,15 +311,7 @@ begin
       end;
     end
     else
-      Result :=
-          Byte(
-                  RotatedImage.GetPaletteColor(
-                          RotatedImage.GetPixelIndex(
-                              Point.X - HitTestBounds.Left,
-                              Point.Y - HitTestBounds.Top
-                          ))
-                      shr 24)
-              > 8;
+      Result := RotatedImage.GetPaletteColor(RotatedImage.GetPixelIndex(Point.X - HitTestBounds.Left, Point.Y - HitTestBounds.Top)).A > 8;
   end;
 end;
 
@@ -355,11 +336,7 @@ begin
   if Block.CountParams('Image') > 0 then
     if Block.CountParams('Size') > 0 then
       if Block.CountParams('Sme') > 0 then
-        SetImage(
-            Block.GetParam('Image'),
-            GetPointGI(Block.GetParam('Size')),
-            GetPointGI(Block.GetParam('Sme'))
-        );
+        SetImage(Block.GetParam('Image'), GetPointGI(Block.GetParam('Size')), GetPointGI(Block.GetParam('Sme')));
   if Block.CountParams('Angle') > 0 then
     SetAngle(StrToInt(Block.GetParam('Angle')));
   if Block.CountParams('Trans') > 0 then
@@ -381,10 +358,7 @@ begin
     Exit;
   if HardwareRenderingEnabled then
   begin
-    if (RenderedAngle <> Angle)
-        or (ImageDirty = True)
-        or (FrameIndex <> RenderedFrameIndex)
-        or (FrameTexture = nil) then
+    if (RenderedAngle <> Angle) or (ImageDirty = True) or (FrameIndex <> RenderedFrameIndex) or (FrameTexture = nil) then
     begin
       ImageDirty := False;
       RenderedAngle := Angle;

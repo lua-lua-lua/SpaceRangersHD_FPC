@@ -91,6 +91,8 @@ type
 implementation
 
 uses
+  GameDiagnostics,
+  GameEvents,
   aGalaxyStruct,
   SysUtils,
   Math,
@@ -127,19 +129,17 @@ uses
 
 procedure TfFilmLoader.Execute;
 begin
-  FilmHistory
-      .LoadFilm(FilmHistory.GetEntry(FilmScreen.PreloadHistoryIndex), FilmScreen.PreloadedFilm);
+  FilmHistory.LoadFilm(FilmHistory.GetEntry(FilmScreen.PreloadHistoryIndex), FilmScreen.PreloadedFilm);
   FilmScreen.PreloadedFilm.Turn := FilmHistory.GetEntry(FilmScreen.PreloadHistoryIndex).Turn;
 end;
 
 procedure TfFilm.InitializeLayout;
 var
-  Main, Map, Center, Shade, ShadeNext, Fps, FilmPanel, SpaceImages, Stars, StarImages, StarM:
-      TObjectGI;
+  Main, Map, Center, Shade, ShadeNext, Fps, FilmPanel, SpaceImages, Stars, StarImages, StarM: TObjectGI;
   Graph: TGraphBufGI;
 begin
   inherited InitializeLayout;
-  AppendLogTextThreadSafe('fFilm... ');
+  LogGameMessage(gllDebug, 'ui', 'Initializing layout fFilm');
   ViewportRect := Classes.Rect(0, 0, GameScreenWidth, GameScreenHeight);
   Main := GetByName('MainPanel');
   Main.Parent.SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
@@ -147,41 +147,18 @@ begin
   Main.SetOrigin(Classes.Point(GameScreenWidth shr 1, GameScreenHeight shr 1));
   Main.SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
   Map := Main.FindByNameRecursive('MapPanel');
-  Map.SetPosition(
-      Classes.Point(
-          Map.LocalPosition.X + ExtraScreenWidth div 2,
-          Map.LocalPosition.Y - ExtraScreenHeight div 2
-      )
-  );
+  Map.SetPosition(Classes.Point(Map.LocalPosition.X + ExtraScreenWidth div 2, Map.LocalPosition.Y - ExtraScreenHeight div 2));
   Center := Main.FindByNameRecursive('CenterShip');
-  Center.SetPosition(
-      Classes.Point(
-          Center.LocalPosition.X + ExtraScreenWidth div 2,
-          Center.LocalPosition.Y - ExtraScreenHeight div 2
-      )
-  );
+  Center.SetPosition(Classes.Point(Center.LocalPosition.X + ExtraScreenWidth div 2, Center.LocalPosition.Y - ExtraScreenHeight div 2));
   Shade := Main.FindByNameRecursive('MapPanelA');
-  Shade.SetPosition(
-      Classes.Point(
-          Shade.LocalPosition.X + ExtraScreenWidth div 2,
-          Shade.LocalPosition.Y - ExtraScreenHeight div 2
-      )
-  );
+  Shade.SetPosition(Classes.Point(Shade.LocalPosition.X + ExtraScreenWidth div 2, Shade.LocalPosition.Y - ExtraScreenHeight div 2));
   ShadeNext := Shade.NextSibling;
-  ShadeNext.SetPosition(
-      Classes.Point(
-          ShadeNext.LocalPosition.X + ExtraScreenWidth div 2,
-          ShadeNext.LocalPosition.Y - ExtraScreenHeight div 2
-      )
-  );
+  ShadeNext
+      .SetPosition(Classes.Point(ShadeNext.LocalPosition.X + ExtraScreenWidth div 2, ShadeNext.LocalPosition.Y - ExtraScreenHeight div 2));
   Fps := Main.FindByNameRecursive('FPS');
-  Fps.SetPosition(
-      Classes.Point(Fps.LocalPosition.X, Fps.LocalPosition.Y - ExtraScreenHeight div 2)
-  );
+  Fps.SetPosition(Classes.Point(Fps.LocalPosition.X, Fps.LocalPosition.Y - ExtraScreenHeight div 2));
   FilmPanel := Main.FindByNameRecursive('PanelFilm');
-  FilmPanel.SetPosition(
-      Classes.Point(FilmPanel.LocalPosition.X, FilmPanel.LocalPosition.Y + ExtraScreenHeight div 2)
-  );
+  FilmPanel.SetPosition(Classes.Point(FilmPanel.LocalPosition.X, FilmPanel.LocalPosition.Y + ExtraScreenHeight div 2));
   SpaceImages := Main.FindByNameRecursive('SpaceImg');
   SpaceImages.SetOrigin(Classes.Point(GameScreenWidth shr 1, GameScreenHeight shr 1));
   SpaceImages.SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
@@ -194,7 +171,6 @@ begin
   StarM := Main.FindByNameRecursive('StarFieldM');
   StarM.SetOrigin(Classes.Point(GameScreenWidth shr 1, GameScreenHeight shr 1));
   StarM.SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
-  AppendLogLineThreadSafe('ok');
   CenterShipButton := GetByName('CenterShip') as TGraphButtonGI;
   CenterShipButton.DownCallback := CenterShipClicked;
   SpacePanel := GetByName('MainPanel') as TPanelGI;
@@ -230,8 +206,8 @@ begin
     Loader.Free;
     Loader := nil;
   end;
-  Loader := TfFilmLoader.Create;
-  Loader.SetPriority(1);
+  Loader := TfFilmLoader.Create('film-loader');
+  Loader.SetPriority(ThreadPriorityLowest);
   PanTimer := ScheduleCallbackTimer(ScrollTime, ScrollTime, PanView);
   ContentPanel.KeyDownCallback := KeyDown;
   ContentPanel.KeyUpCallback := KeyUp;
@@ -246,8 +222,7 @@ begin
   StopButton.UpCallback := PlayStopClicked;
   TurnSlider.SetRange(0, FilmHistory.GetCount - 1);
   TurnSlider.PositionChangedCallback := TurnSliderChanged;
-  GetByName('MapPanelA')
-      .SetActive((GetPlayer <> nil) and GetPlayer.IsHealthEffectActive(heBlindness));
+  GetByName('MapPanelA').SetActive((GetPlayer <> nil) and GetPlayer.IsHealthEffectActive(heBlindness));
   SelectHistoryEntry(FilmHistory.GetCount - 1, True);
   CopyLiveVisualStateToFilm;
   AdvanceOneStep;
@@ -267,8 +242,7 @@ end;
 procedure TfFilm.OnClose;
 begin
   Galaxy.CheckIntegrityChecksum(134);
-  (StarMapScreen.GetByName('StarFieldImg') as TStarFieldImgGI)
-      .CopyStarsFrom(GetByName('StarFieldImg') as TStarFieldImgGI);
+  (StarMapScreen.GetByName('StarFieldImg') as TStarFieldImgGI).CopyStarsFrom(GetByName('StarFieldImg') as TStarFieldImgGI);
   StarMapScreen.SaveSpaceImageState(GetByName('SpaceImg') as TSpaceImgGI);
   if TrailingFilmEffects <> nil then
   begin
@@ -378,9 +352,7 @@ end;
 
 procedure TfFilm.KeyDown(Sender: TObjectGI; Key: Cardinal);
 begin
-  if not IsVirtualKeyDown(VK_CONTROL)
-      and not IsVirtualKeyDown(VK_SHIFT)
-      and not IsVirtualKeyDown(VK_MENU) then
+  if not IsVirtualKeyDown(VK_CONTROL) and not IsVirtualKeyDown(VK_SHIFT) and not IsVirtualKeyDown(VK_MENU) then
     if Key = VK_LEFT then
       PanLeft := True
     else if Key = VK_RIGHT then
@@ -417,21 +389,14 @@ var
   Asteroid: TAsteroid;
   Obj: TEFilmObj;
 begin
-  Obj :=
-      CurrentFilm.FindObject(
-          ClassSEtoName(PlayerStar.Graphic),
-          PlayerStar.Graphic.GraphKey,
-          PlayerStar.Id
-      );
+  Obj := CurrentFilm.FindObject(ClassSEtoName(PlayerStar.Graphic), PlayerStar.Graphic.GraphKey, PlayerStar.Id);
   if (Obj <> nil) and (Obj.SceneObject <> nil) then
-    (Obj.SceneObject as TStarSE)
-        .SetSequenceFrameIndex(TStarSE(PlayerStar.Graphic).GetSequenceFrameIndex);
+    (Obj.SceneObject as TStarSE).SetSequenceFrameIndex(TStarSE(PlayerStar.Graphic).GetSequenceFrameIndex);
   Count := PlayerStar.Planets.Count;
   for Index := 0 to Count - 1 do
   begin
-    Planet := TPlanet(PlayerStar.Planets[Index]);
-    Obj :=
-        CurrentFilm.FindObject(ClassSEtoName(Planet.Graphic), Planet.Graphic.GraphKey, Planet.Id);
+    Planet := PlayerStar.Planets[Index];
+    Obj := CurrentFilm.FindObject(ClassSEtoName(Planet.Graphic), Planet.Graphic.GraphKey, Planet.Id);
     if (Obj <> nil) and (Obj.SceneObject <> nil) then
     begin
       (Obj.SceneObject as TPlanetSE).SetSurfaceMapOffset(Planet.Graphic.SurfaceMapOffset);
@@ -442,13 +407,8 @@ begin
     SatelliteCount := Planet.Satellites.Count;
     for SatelliteIndex := 0 to SatelliteCount - 1 do
     begin
-      Satellite := TSputnik(Planet.Satellites[SatelliteIndex]);
-      Obj :=
-          CurrentFilm.FindObject(
-              ClassSEtoName(Satellite.Graphic),
-              Satellite.Graphic.GraphKey,
-              Satellite.Id
-          );
+      Satellite := Planet.Satellites[SatelliteIndex];
+      Obj := CurrentFilm.FindObject(ClassSEtoName(Satellite.Graphic), Satellite.Graphic.GraphKey, Satellite.Id);
       if (Obj <> nil) and (Obj.SceneObject <> nil) then
       begin
         (Obj.SceneObject as TSputnikSE).SurfaceMapOffset := Satellite.Graphic.SurfaceMapOffset;
@@ -459,16 +419,10 @@ begin
   Count := PlayerStar.Asteroids.Count;
   for Index := 0 to Count - 1 do
   begin
-    Asteroid := TAsteroid(PlayerStar.Asteroids[Index]);
-    Obj :=
-        CurrentFilm.FindObject(
-            ClassSEtoName(Asteroid.GraphObject),
-            Asteroid.GraphObject.GraphKey,
-            Asteroid.Id
-        );
+    Asteroid := PlayerStar.Asteroids[Index];
+    Obj := CurrentFilm.FindObject(ClassSEtoName(Asteroid.GraphObject), Asteroid.GraphObject.GraphKey, Asteroid.Id);
     if (Obj <> nil) and (Obj.SceneObject <> nil) then
-      (Obj.SceneObject as TAsteroidSE)
-          .SetSequenceFrameIndex(TAsteroidSE(Asteroid.GraphObject).GetSequenceFrameIndex);
+      (Obj.SceneObject as TAsteroidSE).SetSequenceFrameIndex(TAsteroidSE(Asteroid.GraphObject).GetSequenceFrameIndex);
   end;
 end;
 
@@ -480,21 +434,14 @@ var
   Asteroid: TAsteroid;
   Obj: TEFilmObj;
 begin
-  Obj :=
-      CurrentFilm.FindObject(
-          ClassSEtoName(PlayerStar.Graphic),
-          PlayerStar.Graphic.GraphKey,
-          PlayerStar.Id
-      );
+  Obj := CurrentFilm.FindObject(ClassSEtoName(PlayerStar.Graphic), PlayerStar.Graphic.GraphKey, PlayerStar.Id);
   if (Obj <> nil) and (Obj.SceneObject <> nil) then
-    TStarSE(PlayerStar.Graphic)
-        .SetSequenceFrameIndex((Obj.SceneObject as TStarSE).GetSequenceFrameIndex);
+    TStarSE(PlayerStar.Graphic).SetSequenceFrameIndex((Obj.SceneObject as TStarSE).GetSequenceFrameIndex);
   Count := PlayerStar.Planets.Count;
   for Index := 0 to Count - 1 do
   begin
-    Planet := TPlanet(PlayerStar.Planets[Index]);
-    Obj :=
-        CurrentFilm.FindObject(ClassSEtoName(Planet.Graphic), Planet.Graphic.GraphKey, Planet.Id);
+    Planet := PlayerStar.Planets[Index];
+    Obj := CurrentFilm.FindObject(ClassSEtoName(Planet.Graphic), Planet.Graphic.GraphKey, Planet.Id);
     if (Obj <> nil) and (Obj.SceneObject <> nil) then
     begin
       Planet.Graphic.SetSurfaceMapOffset((Obj.SceneObject as TPlanetSE).SurfaceMapOffset);
@@ -505,13 +452,8 @@ begin
     SatelliteCount := Planet.Satellites.Count;
     for SatelliteIndex := 0 to SatelliteCount - 1 do
     begin
-      Satellite := TSputnik(Planet.Satellites[SatelliteIndex]);
-      Obj :=
-          CurrentFilm.FindObject(
-              ClassSEtoName(Satellite.Graphic),
-              Satellite.Graphic.GraphKey,
-              Satellite.Id
-          );
+      Satellite := Planet.Satellites[SatelliteIndex];
+      Obj := CurrentFilm.FindObject(ClassSEtoName(Satellite.Graphic), Satellite.Graphic.GraphKey, Satellite.Id);
       if (Obj <> nil) and (Obj.SceneObject <> nil) then
       begin
         Satellite.Graphic.SurfaceMapOffset := (Obj.SceneObject as TSputnikSE).SurfaceMapOffset;
@@ -522,16 +464,10 @@ begin
   Count := PlayerStar.Asteroids.Count;
   for Index := 0 to Count - 1 do
   begin
-    Asteroid := TAsteroid(PlayerStar.Asteroids[Index]);
-    Obj :=
-        CurrentFilm.FindObject(
-            ClassSEtoName(Asteroid.GraphObject),
-            Asteroid.GraphObject.GraphKey,
-            Asteroid.Id
-        );
+    Asteroid := PlayerStar.Asteroids[Index];
+    Obj := CurrentFilm.FindObject(ClassSEtoName(Asteroid.GraphObject), Asteroid.GraphObject.GraphKey, Asteroid.Id);
     if (Obj <> nil) and (Obj.SceneObject <> nil) then
-      TAsteroidSE(Asteroid.GraphObject)
-          .SetSequenceFrameIndex((Obj.SceneObject as TAsteroidSE).GetSequenceFrameIndex);
+      TAsteroidSE(Asteroid.GraphObject).SetSequenceFrameIndex((Obj.SceneObject as TAsteroidSE).GetSequenceFrameIndex);
   end;
 end;
 
@@ -593,11 +529,7 @@ begin
     SpaceProcess.ActionColor := CurrentPixelFormat.PackRgbBytes(0, 255, 0);
   end;
   SpaceProcess.SystemRadius := CurrentFilm.MapDiameter div 2;
-  SpaceProcess.PopulateAmbientObjects(
-      CurrentFilm.MapDiameter div 2,
-      CurrentFilm.BackgroundImage,
-      CurrentFilm.StarGenerationSeed
-  );
+  SpaceProcess.PopulateAmbientObjects(CurrentFilm.MapDiameter div 2, CurrentFilm.BackgroundImage, CurrentFilm.StarGenerationSeed);
   SpaceProcess.OpenSpace(SpacePanel, Self);
   SpaceProcess.Space.MinimapScale := 0.0000001;
   SpaceProcess.BindMinimap(MapPanel);
@@ -624,10 +556,7 @@ begin
   while Obj <> nil do
   begin
     if Obj.SceneObject = nil then
-      RetainSpaceObject(
-          Obj.SceneObject,
-          CreateSpaceObjectByName(Obj.KindName, Obj.GraphKey, Classes.Point(0, 0))
-      );
+      RetainSpaceObject(Obj.SceneObject, CreateSpaceObjectByName(Obj.KindName, Obj.GraphKey, Classes.Point(0, 0)));
     Obj := Obj.Next;
   end;
 end;
@@ -703,9 +632,7 @@ begin
     OldObj := CurrentFilm.FirstObject;
     while OldObj <> nil do
     begin
-      if (OldObj.SceneObject <> nil)
-          and OldObj.SceneObject.IsAttachedToSpace
-          and (OldObj.SceneObject.GraphKey = 'Ruins.WB') then
+      if (OldObj.SceneObject <> nil) and OldObj.SceneObject.IsAttachedToSpace and (OldObj.SceneObject.GraphKey = 'Ruins.WB') then
       begin
         NewObj := PreloadedFilm.AllocateObject;
         NewObj.ObjectId := OldObj.ObjectId;
@@ -957,9 +884,7 @@ procedure TfFilm.SelectMusic;
 begin
   if MusicInSpaceEnabled then
   begin
-    if (GetPlayer <> nil)
-        and (GetPlayer.GetHull.CapitalShip = 1)
-        and (RandomIntRange(0, 100) < 20) then
+    if (GetPlayer <> nil) and (GetPlayer.GetHull.CapitalShip = 1) and (RandomIntRange(0, 100) < 20) then
     begin
       StarMapScreen.BattleMusicSelected := True;
       MusicManager.PlayCategory('Destroyer');

@@ -16,6 +16,7 @@ type
 
   TSaver = class(TThreadEC)
     FileName: WideString;
+    SaveTurn: Integer;
     HeaderBuffer: TBufEC;
     PreviewBuffer: TBufEC;
     SecondaryPreviewBuffer: TBufEC;
@@ -24,6 +25,7 @@ type
     procedure Execute; override;
     procedure QueueSave(
         AFileName: WideString;
+        ATurn: Integer;
         Header: TBufEC;
         Preview: TBufEC;
         SecondaryPreview: TBufEC;
@@ -62,7 +64,9 @@ procedure FinalizeSaveWriter(RaiseOnFailure: Boolean = True);
 implementation
 
 uses
+  aPlanet,
   GameEvents,
+  GameDiagnostics,
   aMyFunction,
   aGalaxyStruct,
   aKling,
@@ -115,11 +119,12 @@ procedure TSaver.Execute;
 var
   F: TFileEC;
   Size, I, Seed: Integer;
-  SourceName, TargetName, NewName, OldName, Prefix, AutoName, TurnName, QuickName, TempName:
-      WideString;
+  StartedAt: QWord;
+  SourceName, TargetName, NewName, OldName, Prefix, AutoName, TurnName, QuickName, TempName: WideString;
 begin
   SaveLoadLock.Enter;
   try
+    StartedAt := GetTickCount64;
     AutoName := SaveManagerScreen.GetAutoSavePath;
     TurnName := SaveManagerScreen.GetTurnSavePath;
     QuickName := SaveManagerScreen.GetQuickSavePath(1);
@@ -163,10 +168,7 @@ begin
       TargetName := FileName;
       if (FileName = QuickName) and (QuickSaveExtraSlots > 0) then
       begin
-        Prefix :=
-            TrimWideString(ExtractFileDirW(QuickName))
-                + '\'
-                + TrimWideString(ExtractFileNameNoExtW(QuickName));
+        Prefix := TrimWideString(ExtractFileDirW(QuickName)) + '\' + TrimWideString(ExtractFileNameNoExtW(QuickName));
         NewName := Prefix + IntToWideString(QuickSaveExtraSlots + 1) + '.sav';
         for I := QuickSaveExtraSlots downto 1 do
         begin
@@ -182,11 +184,23 @@ begin
       end;
       if FileExists(NativeGamePath(AnsiString(TargetName))) then
         SysUtils.DeleteFile(NativeGamePath(TargetName));
-      RenameFile(NativeGamePath(SourceName), NativeGamePath(TargetName));
+      if not RenameFile(NativeGamePath(SourceName), NativeGamePath(TargetName)) then
+        RaiseLastOSError;
+      LogGameMessage(
+          gllInfo,
+          'save',
+          'Saved "'
+              + ExtractFileName(NativeGamePath(FileName))
+              + '"; turn='
+              + IntToStr(SaveTurn)
+              + '; elapsed='
+              + IntToStr(GetTickCount64 - StartedAt)
+              + ' ms'
+      );
     except
       on E: Exception do
       begin
-        AppendLogLineThreadSafe(E.Message);
+        LogCurrentGameException('save', 'Writing save "' + ExtractFileName(NativeGamePath(FileName)) + '"; turn=' + IntToStr(SaveTurn));
         if FileName = AutoName then
           Galaxy.ShowLocalizedWarning('Warning.AutoSaveFailed');
         if FileName = TurnName then
@@ -219,14 +233,13 @@ begin
   end;
 end;
 
-procedure TSaver.QueueSave(
-    AFileName: WideString;
-    Header, Preview, SecondaryPreview, GameState, Films: TBufEC
-);
+procedure TSaver.QueueSave(AFileName: WideString; ATurn: Integer; Header, Preview, SecondaryPreview, GameState, Films: TBufEC);
 begin
   if IsRunning then
     WaitForIdle(INFINITE);
   FileName := AFileName;
+  // Capture the serialized turn before the simulation resumes on another thread.
+  SaveTurn := ATurn;
   HeaderBuffer := Header;
   PreviewBuffer := Preview;
   SecondaryPreviewBuffer := SecondaryPreview;
@@ -261,10 +274,7 @@ begin
       Header.AddWideStringZ(IntToStr(GetPlayer.Money));
       Header.AddWideStringZ(GetPlayer.Name);
       if GetPlayer.OwnerId = oiPirate then
-        Header.AddWideStringZ(
-            OwnerInfo[oiPirate].InternalName
-                + OwnerInfo[RaceToOwner(GetPlayer.PilotRace)].InternalName
-        )
+        Header.AddWideStringZ(OwnerInfo[oiPirate].InternalName + OwnerInfo[RaceToOwner(GetPlayer.PilotRace)].InternalName)
       else
         Header.AddWideStringZ(OwnerInfo[GetPlayer.OwnerId].InternalName);
       Header.AddWideStringZ('EZ');
@@ -321,13 +331,12 @@ begin
         if Size > 0 then
           Films.AddBytes(FilmEntry.Data, Size);
       end;
-      SaveWriter.QueueSave(FileName, Header, Preview, SecondaryPreview, GameState, Films);
+      SaveWriter.QueueSave(FileName, Galaxy.CurrentTurn, Header, Preview, SecondaryPreview, GameState, Films);
       if Galaxy.CampaignFlag183 <> 0 then
       begin
         EditableSaveFileName := SaveManagerScreen.GetSaveConfigPath(FileName);
         if (UserSettingsConfig.CountParams('UnicodeDump') > 0)
-            and ParseEnabledNameGI(
-                TrimWideString(UserSettingsConfig.GetParamByPathOrMarker('UnicodeDump'))) then
+            and ParseEnabledNameGI(TrimWideString(UserSettingsConfig.GetParamByPathOrMarker('UnicodeDump'))) then
           EditableSaveBlock.SaveTextFile(PWideChar(EditableSaveFileName), False, False)
         else
           EditableSaveBlock.SaveTextFile(PWideChar(EditableSaveFileName), True, False);
@@ -338,7 +347,7 @@ begin
     except
       on E: Exception do
       begin
-        AppendLogLineThreadSafe(E.Message);
+        LogCurrentGameException('save', 'Preparing save ' + ExtractFileName(NativeGamePath(FileName)));
         if FileName = AutoName then
           Galaxy.ShowLocalizedWarning('Warning.AutoSaveFailed');
         if FileName = TurnName then
@@ -390,10 +399,12 @@ var
   Size, I, Count, Seed: Integer;
   Crc: Cardinal;
   Message: TMessagePlayer;
+  StartedAt: QWord;
 begin
   Result := False;
   LoadedSaveModSet := SelectedMods;
   SaveLoadLock.Enter;
+  StartedAt := GetTickCount64;
   F := nil;
   Buffer := nil;
   try
@@ -434,7 +445,9 @@ begin
       try
         F.ReadBuffer(Buffer.Data, Size);
       except
-        ShowMessageBoxGI(nil, 'Compressed galaxy read fail', mbgOK);
+        if ExceptObject is Exception then
+          AddGameExceptionContext(Exception(ExceptObject), 'Reading compressed galaxy from ' + ExtractFileName(NativeGamePath(FileName)));
+        raise;
       end;
     end;
     Buffer.ApplyDatXorCipher(Seed);
@@ -456,9 +469,6 @@ begin
     Buffer.GetByte;
     Buffer.GetBoolean;
     PlayerStarDayPrepared := Buffer.GetBoolean;
-    if PlayerStarDayPrepared then
-    begin
-    end;
     ShownPlayerTips := Buffer.GetUInt32;
     Buffer.GetInt32;
     Count := Buffer.GetInt32;
@@ -503,7 +513,23 @@ begin
     LoadingFilmCount := -1;
     PreviousFilmActivity := 0;
     Result := True;
+    LogGameMessage(
+        gllInfo,
+        'save',
+        'Loaded "'
+            + ExtractFileName(NativeGamePath(FileName))
+            + '"; turn='
+            + IntToStr(Galaxy.CurrentTurn)
+            + '; seed='
+            + IntToStr(Integer(Galaxy.GenerationSeed))
+            + '; save version='
+            + IntToStr(LoadedSaveVersion)
+            + '; elapsed='
+            + IntToStr(GetTickCount64 - StartedAt)
+            + ' ms'
+    );
   except
+    LogCurrentGameException('save', 'Loading save ' + ExtractFileName(NativeGamePath(FileName)));
     if MemorySnapshotBuffer <> nil then
       MemorySnapshotBuffer.Free;
     MemorySnapshotBuffer := nil;
@@ -540,7 +566,7 @@ begin
   if (CurrentScreenId <> screenPlanetQuest)
       and ((CurrentScreenId <> screenGovernment) or (GovernmentScreen.PendingTransition = 0))
       and ((CurrentScreenId <> screenStarMap) or (StarMapScreen.PlanetBattleState = 0)) then
-    (TObject(RegisteredScreens[CurrentScreenId]) as TMessageLoopGI).OnClose;
+    (RegisteredScreens[CurrentScreenId] as TMessageLoopGI).OnClose;
   for I := MessageLoopStack.Count - 1 downto 0 do
   begin
     Loop := MessageLoopStack[I];
@@ -638,9 +664,9 @@ begin
   end;
   Galaxy.LoadFromBuffer(MemorySnapshotBuffer);
   Dec(Galaxy.LoadCount);
-  TalkShip := Galaxy.IdToShip(MemorySnapshotBuffer.GetUInt32, True);
-  TalkPlanet := Galaxy.IdToPlanet(MemorySnapshotBuffer.GetUInt32);
-  ShipScreen.ShipToInspect := Galaxy.IdToShip(MemorySnapshotBuffer.GetUInt32, True);
+  TalkShip := TShip(Galaxy.IdToShip(MemorySnapshotBuffer.GetUInt32, True));
+  TalkPlanet := TPlanet(Galaxy.IdToPlanet(MemorySnapshotBuffer.GetUInt32));
+  ShipScreen.ShipToInspect := TShip(Galaxy.IdToShip(MemorySnapshotBuffer.GetUInt32, True));
   for I := MessageLoopStack.Count - 1 downto 0 do
   begin
     Loop := MessageLoopStack[I];
@@ -752,9 +778,7 @@ begin
       else if GetPlayer.IsDockedToShip then
         RequestedScreenId := screenRuinsTalk;
     end
-    else if GetPlayer.InHyperspace
-        and (GetPlayer.Order = soJumpHole)
-        and ((Loop is TfStarMap) or (Loop is TfAB)) then
+    else if GetPlayer.InHyperspace and (GetPlayer.Order = soJumpHole) and ((Loop is TfStarMap) or (Loop is TfAB)) then
     begin
       RequestedScreenId := screenMainMenu;
       Loop.RequestClose(1);
@@ -777,7 +801,7 @@ begin
       or (GetPlayer.IsDockedToShip and (GetPlayer.DockedTo is TRuins)) then
     BuildTemporaryShopSlotGrid;
   if ReopenScreen then
-    (TObject(RegisteredScreens[CurrentScreenId]) as TMessageLoopGI).OnOpen;
+    (RegisteredScreens[CurrentScreenId] as TMessageLoopGI).OnOpen;
   Galaxy.ClearIntegrityStatus;
   Galaxy.PrimeIntegrityChecksum(1);
   MemorySnapshotBuffer.Free;
@@ -788,7 +812,7 @@ end;
 
 procedure InitializeSaveWriter;
 begin
-  SaveWriter := TSaver.Create;
+  SaveWriter := TSaver.Create('save');
 end;
 
 procedure FinalizeSaveWriter(RaiseOnFailure: Boolean);
@@ -806,8 +830,7 @@ begin
           if RaiseOnFailure then
             raise;
           // Fatal teardown must keep the primary error and finish cleanup.
-          AppendLogLineThreadSafe('Save writer during cleanup: ' + E.Message);
-          AppendLogLineThreadSafe(E.WorkerBacktrace);
+          LogCurrentGameException('save', 'Save writer during cleanup');
         end;
       end;
     finally

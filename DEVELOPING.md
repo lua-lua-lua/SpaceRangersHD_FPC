@@ -1,5 +1,11 @@
 # Development gotchas
 
+- **Prefer fixing FPC and OKGF in their own repositories.**
+  We maintain [fpc_sr](https://github.com/pakompom/fpc_sr) and
+  [okgf](https://github.com/pakompom/okgf), so fixes to those two should normally
+  go into their repositories, followed by submodule pin updates here, rather
+  than carrying local patches.
+
 - **`Double` variables can still get Single-precision arithmetic.**
   [`GameOptions.inc`](source/GameOptions.inc) enables `LEGACYPC24`, which rounds
   arithmetic to a 24-bit significand even when the destination is `Double`.
@@ -102,10 +108,31 @@ controls: close callbacks must still see the mode that created their tree.
   input routing, but do not reproduce Android's keyboard, activity lifecycle,
   cutouts or graphics driver.
 
+## Diagnostics and exceptions
+
+Keep the original exception's type, message and stack, adding context about the
+operation, resource or script involved. Use `AddGameExceptionContext` followed by
+bare `raise` to propagate it. Leave cancellation and other control-flow exceptions
+alone. Log when recovering or reporting the final failure, rather than at every
+rethrow; cleanup failures must not replace the original error.
+
+Use `LogGameMessage` for complete Unicode records with a severity and subsystem.
+Debug is for routine progress, info for meaningful game events and script `SFT`
+output, warning for recoverable problems, and error for failed operations. Decode
+native UTF-8 before logging. `GameSDLDiagnostics` captures SDL errors immediately,
+including the operation that failed.
+
+Workers and C callbacks need a report that survives the exception handler.
+Capture `TGameExceptionReport` inside that handler, before cleanup. Clone it for
+each additional owner; free it unless ownership passes to `EGameDiagnosticException`.
+Clones retain the original failure and share its logging identity. Workers log
+terminal failures where they occur. C callbacks return an error after capture;
+raise only after returning to Pascal, never through C.
+
 ## Formatting
 
 Pascal source uses [pasfmt](https://github.com/integrated-application-development/pasfmt)
-with `pasfmt.toml`. `tools/format.py` also uses clang-format, Ruff,
+with `pasfmt.toml` and a 140-column limit. `tools/format.py` also uses clang-format, Ruff,
 cmake-format, and xmllint.
 
 ```sh

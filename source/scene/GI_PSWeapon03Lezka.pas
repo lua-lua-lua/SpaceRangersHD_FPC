@@ -200,11 +200,7 @@ var
   Target: TPoint;
   Intersection: TRect;
 begin
-  MessageLoop.UpdateRects.AddScreenClippedRect(
-      HitTestBounds,
-      Parent.ToAbsolutePoint(LocalPosition),
-      Parent.ToAbsolutePoint(TargetPoint)
-  );
+  MessageLoop.UpdateRects.AddScreenClippedRect(HitTestBounds, Parent.ToAbsolutePoint(LocalPosition), Parent.ToAbsolutePoint(TargetPoint));
   Target := Parent.ToAbsolutePoint(TargetPoint);
   Rect.Left := Target.X - 24;
   Rect.Right := Target.X + 24;
@@ -223,7 +219,6 @@ var
   Y: Integer;
   Distance, Phase: Single;
   Particle, Current: PLezkaParticle;
-  UnusedAlpha: Byte;
 begin
   if (FirstParticle = nil) and (RemainingTicks >= 2) then
   begin
@@ -233,7 +228,6 @@ begin
     if OriginalLength = 0 then
       OriginalLength := 1;
     LengthScale := 1;
-    UnusedAlpha := 0;
     while Y < Distance do
     begin
       Phase := Y / Distance;
@@ -252,20 +246,13 @@ begin
       Particle.AlphaStep := Random(10) + 10;
       Particle.Velocity := MakePointF(0, 3);
       Particle.State := 1 + Random(2);
-      // Retained native accumulator, although it does not feed a particle field.
-      if UnusedAlpha + 4 < 255 then
-        Inc(UnusedAlpha, 4)
-      else
-        UnusedAlpha := 255;
       Inc(Y);
     end;
   end
   else
   begin
     Distance := OriginalLength;
-    LengthScale :=
-        Sqrt(Sqr(TargetPoint.X - LocalPosition.X) + Sqr(TargetPoint.Y - LocalPosition.Y))
-            / OriginalLength;
+    LengthScale := Sqrt(Sqr(TargetPoint.X - LocalPosition.X) + Sqr(TargetPoint.Y - LocalPosition.Y)) / OriginalLength;
     UpdateHitTestBounds;
     Particle := FirstParticle;
     while Particle <> nil do
@@ -356,16 +343,10 @@ begin
       PY := -Particle.Position.Y * LengthScale;
       X := Round(PX * Cosine - PY * Sine + AbsolutePosition.X);
       Y := Round(PX * Sine + PY * Cosine + AbsolutePosition.Y);
-      if (X >= ClipRect.Left)
-          and (X < ClipRect.Right)
-          and (Y >= ClipRect.Top)
-          and (Y < ClipRect.Bottom) then
+      if (X >= ClipRect.Left) and (X < ClipRect.Right) and (Y >= ClipRect.Top) and (Y < ClipRect.Bottom) then
         ScreenRenderBuffer.BlendPixel16(X, Y, Particle.Color, Particle.Alpha);
       Dec(X);
-      if (X >= ClipRect.Left)
-          and (X < ClipRect.Right)
-          and (Y >= ClipRect.Top)
-          and (Y < ClipRect.Bottom) then
+      if (X >= ClipRect.Left) and (X < ClipRect.Right) and (Y >= ClipRect.Top) and (Y < ClipRect.Bottom) then
         ScreenRenderBuffer.BlendPixel16(X, Y, Particle.Color, Particle.Alpha);
       Particle := Particle.Next;
     end;
@@ -396,8 +377,7 @@ begin
         begin
           Text := PaletteBlock.GetParam('Color' + IntToStr(ColorIndex));
           for PartIndex := 0 to 2 do
-            LezkaPrimaryPalettes[Index][3 * ColorIndex + PartIndex] :=
-                ExtractDecimalToSingleW(ExtractDelimitedPartW(Text, PartIndex, ','));
+            LezkaPrimaryPalettes[Index][3 * ColorIndex + PartIndex] := ExtractDecimalToSingleW(ExtractDelimitedPartW(Text, PartIndex, ','));
         end;
       for ColorIndex := 0 to 2 do
         if PaletteBlock.CountParams('Color' + IntToStr(ColorIndex + 3)) > 0 then

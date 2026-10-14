@@ -17,15 +17,8 @@ type
   TTranclucator = class;
 
   {$Z1}
-  TTranclucatorCollectionKind = (
-      tckOther = 0,
-      tckArtefact = 1,
-      tckMicroModule = 2,
-      tckEquipment = 3,
-      tckUseless = 4,
-      tckGoods = 5,
-      tckCountable = 6
-  );
+  TTranclucatorCollectionKind =
+      (tckOther = 0, tckArtefact = 1, tckMicroModule = 2, tckEquipment = 3, tckUseless = 4, tckGoods = 5, tckCountable = 6);
 
   {$Z4}
   TTranclucatorStorageKind = (tskPlanet = 1, tskStation = 2);
@@ -71,35 +64,12 @@ type
     function AcceptsAppealFrom(Ship: TShip): Boolean; override;
     procedure ProcessCombatDialogue; override;
     procedure ReactToExtortionDemand(Ranger: Pointer); override;
-    function BuildMoneyExtortionResponse(
-        OtherShip: TShip;
-        var Response: WideString;
-        DemandedAmount: Integer
-    ): Boolean; override;
-    function BuildCargoExtortionResponse(
-        OtherShip: TShip;
-        var Response: WideString
-    ): Boolean; override;
-    function BuildTrucePaymentResponse(
-        OtherShip: TShip;
-        var Response: WideString;
-        OfferedAmount: Integer
-    ): Boolean; override;
-    function BuildAttackRequestResponse(
-        Requester: TShip;
-        var Response: WideString;
-        Target: TShip
-    ): Boolean; override;
-    function AcceptPartnershipOffer(
-        OtherShip: TShip;
-        var Response: WideString;
-        PaymentAmount: Integer
-    ): Boolean; override;
-    function BuildPartnershipOfferResponse(
-        OtherShip: TShip;
-        var Response: WideString;
-        PaymentAmount: Integer
-    ): Boolean; override;
+    function BuildMoneyExtortionResponse(OtherShip: TShip; var Response: WideString; DemandedAmount: Integer): Boolean; override;
+    function BuildCargoExtortionResponse(OtherShip: TShip; var Response: WideString): Boolean; override;
+    function BuildTrucePaymentResponse(OtherShip: TShip; var Response: WideString; OfferedAmount: Integer): Boolean; override;
+    function BuildAttackRequestResponse(Requester: TShip; var Response: WideString; Target: TShip): Boolean; override;
+    function AcceptPartnershipOffer(OtherShip: TShip; var Response: WideString; PaymentAmount: Integer): Boolean; override;
+    function BuildPartnershipOfferResponse(OtherShip: TShip; var Response: WideString; PaymentAmount: Integer): Boolean; override;
     procedure RefreshCurrentStanding; override;
     constructor Create;
     destructor Destroy; override;
@@ -123,15 +93,14 @@ type
 
 var
 
-  TranclucatorSkillBonusWeights: array[bonSkill1..bonSkill6] of Integer =
-      (100, 100, 80, 80, 60, 60);
+  TranclucatorSkillBonusWeights: array[bonSkill1..bonSkill6] of Integer = (100, 100, 80, 80, 60, 60);
 
-  TranclucatorSlotBonusWeights: array[bonSlotRadar..bonSlotForsage] of Integer =
-      (100, 100, 200, 100, 200, 75, 10, 30);
+  TranclucatorSlotBonusWeights: array[bonSlotRadar..bonSlotForsage] of Integer = (100, 100, 200, 100, 200, 75, 10, 30);
 
 implementation
 
 uses
+  GameDiagnostics,
   EC_Struct,
   Classes,
   SysUtils,
@@ -168,10 +137,7 @@ begin
     CollectionPermissions[Kind] := False;
 end;
 
-procedure TTranclucator.SetCollectionPermission(
-    Kind: TTranclucatorCollectionKind;
-    Enabled: Boolean
-);
+procedure TTranclucator.SetCollectionPermission(Kind: TTranclucatorCollectionKind; Enabled: Boolean);
 begin
   CollectionPermissions[Kind] := Enabled;
 end;
@@ -224,12 +190,7 @@ var
 
   function RandomEquipmentSize(BaseSize: Integer): Integer;
   begin
-    Result :=
-        NextRandomIntRange(
-            Round(BaseSize * EquipmentSizeFactors[3]),
-            Round(BaseSize * EquipmentSizeFactors[4]),
-            RandomState
-        );
+    Result := NextRandomIntRange(Round(BaseSize * EquipmentSizeFactors[3]), Round(BaseSize * EquipmentSizeFactors[4]), RandomState);
   end;
 
 begin
@@ -255,22 +216,11 @@ begin
   GraphDominator := Galaxy.GraphDominatorSurfacesEnabled;
   if BasicEquipment then
   begin
-    CreateAndEquipHull(
-        Round(NextRandomIntRange(200, 300, RandomState) * HullCapacityScale),
-        1,
-        OwnerId,
-        -1,
-        False
-    );
+    CreateAndEquipHull(Round(NextRandomIntRange(200, 300, RandomState) * HullCapacityScale), 1, OwnerId, -1, False);
     CreateAndEquipFuelTanks(10, 1, OwnerId);
     CreateAndEquipEngine(RandomEquipmentSize(EngineBaseSize), 2, OwnerId);
     WeaponType := TItemType(NextRandomIntRange(0, 2, RandomState) + Ord(t_IndustrialLaser));
-    CreateAndEquipWeapon(
-        WeaponType,
-        RandomEquipmentSize(WeaponInfos[WeaponType].AverageSize),
-        1,
-        OwnerId
-    );
+    CreateAndEquipWeapon(WeaponType, RandomEquipmentSize(WeaponInfos[WeaponType].AverageSize), 1, OwnerId);
   end
   else
   begin
@@ -284,30 +234,14 @@ begin
     );
     CreateAndEquipEngine(RandomEquipmentSize(EngineBaseSize), RandomEquipmentLevel, OwnerId);
     CreateAndEquipFuelTanks(10, 1, OwnerId);
-    CreateAndEquipDefGenerator(
-        RandomEquipmentSize(DefGeneratorBaseSize),
-        RandomEquipmentLevel,
-        OwnerId
-    );
-    CreateAndEquipRepairRobot(
-        RandomEquipmentSize(RepairRobotBaseSize),
-        RandomEquipmentLevel,
-        OwnerId
-    );
+    CreateAndEquipDefGenerator(RandomEquipmentSize(DefGeneratorBaseSize), RandomEquipmentLevel, OwnerId);
+    CreateAndEquipRepairRobot(RandomEquipmentSize(RepairRobotBaseSize), RandomEquipmentLevel, OwnerId);
     CreateAndEquipCargoHook(RandomEquipmentSize(CargoHookBaseSize), RandomEquipmentLevel, OwnerId);
     WeaponType := TItemType(NextRandomIntRange(0, 2, RandomState) + Ord(t_IndustrialLaser));
-    CreateAndEquipWeapon(
-        WeaponType,
-        RandomEquipmentSize(WeaponInfos[WeaponType].AverageSize),
-        1,
-        OwnerId
-    );
-    BaseSkills[psAccuracy] :=
-        NextRandomIntRange(0, Round(RemapClamped(Galaxy.TechLevel, 3, 8, 0, 6)), RandomState);
-    BaseSkills[psManeuverability] :=
-        NextRandomIntRange(0, Round(RemapClamped(Galaxy.TechLevel, 3, 8, 0, 6)), RandomState);
-    BaseSkills[psTechnical] :=
-        NextRandomIntRange(0, Round(RemapClamped(Galaxy.TechLevel, 3, 8, 0, 6)), RandomState);
+    CreateAndEquipWeapon(WeaponType, RandomEquipmentSize(WeaponInfos[WeaponType].AverageSize), 1, OwnerId);
+    BaseSkills[psAccuracy] := NextRandomIntRange(0, Round(RemapClamped(Galaxy.TechLevel, 3, 8, 0, 6)), RandomState);
+    BaseSkills[psManeuverability] := NextRandomIntRange(0, Round(RemapClamped(Galaxy.TechLevel, 3, 8, 0, 6)), RandomState);
+    BaseSkills[psTechnical] := NextRandomIntRange(0, Round(RemapClamped(Galaxy.TechLevel, 3, 8, 0, 6)), RandomState);
   end;
   TechKnowledge := 8;
   if GetCargoFreeSpace < 0 then
@@ -400,7 +334,7 @@ end;
 
 procedure TTranclucator.ResolveLoadedReferences(Galaxy: TGalaxy);
 begin
-  OwnerShip := TObject(Galaxy.IdToShip(Integer(OwnerShip), True)) as TShip;
+  OwnerShip := Galaxy.IdToShip(Integer(OwnerShip), True) as TShip;
   inherited ResolveLoadedReferences(Galaxy);
 end;
 
@@ -494,14 +428,8 @@ begin
   except
     on E: Exception do
     begin
-      AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
-      raise Exception.Create(
-          AnsiString(
-              'Error in procedure TTranclucator.NextDayLogic '
-                  + GetFullName(' ')
-                  + ' label = '
-                  + WideString(IntToStr(Stage))
-          ));
+      AddGameExceptionContext(E, 'TTranclucator.NextDayLogic ' + GetFullName(' ') + '; stage=' + WideString(IntToStr(Stage)));
+      raise;
     end;
   end;
 end;
@@ -518,10 +446,7 @@ begin
   if Name <> '' then
     DisplayName := Name
   else
-    DisplayName :=
-        LookupLocalizedTextByKey('Artefacts.ArtTranclucator.Name')
-            + '-'
-            + WideString(IntToStr(Cardinal(Id)));
+    DisplayName := LookupLocalizedTextByKey('Artefacts.ArtTranclucator.Name') + '-' + WideString(IntToStr(Id));
   if TypeNameOverrideKey = '' then
     Result := DisplayName
   else
@@ -565,11 +490,7 @@ end;
 
 function TTranclucator.CanFollowOwnerInCurrentStar: Boolean;
 begin
-  Result :=
-      FollowOwner
-          and (OwnerShip <> nil)
-          and (OwnerShip.CurrentStar = CurrentStar)
-          and not OwnerShip.InHyperspace;
+  Result := FollowOwner and (OwnerShip <> nil) and (OwnerShip.CurrentStar = CurrentStar) and not OwnerShip.InHyperspace;
 end;
 
 procedure TTranclucator.RefuelAtLocation;
@@ -585,8 +506,7 @@ begin
     GetEngine.ConditionPercent := 1;
     GetEngine.BrokenFlag := 0;
   end;
-  if (GetFuelTanks <> nil)
-      and ((GetFuelTanks.BrokenFlag <> 0) or (GetFuelTanks.ConditionPercent < 1)) then
+  if (GetFuelTanks <> nil) and ((GetFuelTanks.BrokenFlag <> 0) or (GetFuelTanks.ConditionPercent < 1)) then
   begin
     GetFuelTanks.ConditionPercent := 1;
     GetFuelTanks.BrokenFlag := 0;
@@ -600,10 +520,7 @@ var
   Artefact: TArtefact;
   Good: Byte;
 
-  procedure AddGoods(
-      Good: Byte;
-      Quantity, Cost: Integer
-  ); { Nested helper; caller-popped static link, destination at ParentFrame-4. }
+  procedure AddGoods(Good: Byte; Quantity, Cost: Integer); { Nested helper; caller-popped static link, destination at ParentFrame-4. }
   begin
     if Quantity > 0 then
     begin
@@ -615,7 +532,7 @@ var
 begin
   for I := Inventory.Count - 1 downto 0 do
   begin
-    Item := TEquipment(Inventory[I]);
+    Item := Inventory[I];
     if Item.EquippedFlag <> 0 then
       Continue;
     Inventory.Delete(Inventory.IndexOf(Item));
@@ -623,7 +540,7 @@ begin
   end;
   for I := Artefacts.Count - 1 downto 0 do
   begin
-    Artefact := TArtefact(Artefacts[I]);
+    Artefact := Artefacts[I];
     if Artefact.EquippedFlag <> 0 then
       Continue;
     Artefacts.Delete(Artefacts.IndexOf(Artefact));
@@ -650,12 +567,11 @@ var
   Item: TEquipment;
   Artefact: TArtefact;
 begin
-  if not (Location is TPlanet)
-      or ((Location as TPlanet).OwnerId in [oiMaloc..oiGaal, oiPirate]) then
+  if not (Location is TPlanet) or ((Location as TPlanet).OwnerId in [oiMaloc..oiGaal, oiPirate]) then
   begin
     for I := Inventory.Count - 1 downto 0 do
     begin
-      Item := TEquipment(Inventory[I]);
+      Item := Inventory[I];
       if Item.EquippedFlag <> 0 then
         Continue;
       GetPlayer.AddItemToPlayerStorage(Item, Location, -1);
@@ -663,7 +579,7 @@ begin
     end;
     for I := Artefacts.Count - 1 downto 0 do
     begin
-      Artefact := TArtefact(Artefacts[I]);
+      Artefact := Artefacts[I];
       if Artefact.EquippedFlag <> 0 then
         Continue;
       GetPlayer.AddItemToPlayerStorage(Artefact, Location, -1);
@@ -716,19 +632,15 @@ var
   Distance, BestDistance: Double;
 begin
   Result := False;
-  if (OwnerShip <> nil)
-      and (GetPlayer <> nil)
-      and (GetPlayer = OwnerShip)
-      and HasLooseNonScriptItemsOrGoods then
+  if (OwnerShip <> nil) and (GetPlayer <> nil) and (GetPlayer = OwnerShip) and HasLooseNonScriptItemsOrGoods then
   begin
     BestDistance := 10000;
     Location := nil;
     if GetStoragePermission(tskPlanet) then
       for I := 0 to CurrentStar.Planets.Count - 1 do
       begin
-        Planet := TPlanet(CurrentStar.Planets[I]);
-        if (Planet.OwnerId in [oiMaloc..oiGaal, oiPirate])
-            and (Planet.GetRelationLevelToShip(GetPlayer) >= rlNormal) then
+        Planet := CurrentStar.Planets[I];
+        if (Planet.OwnerId in [oiMaloc..oiGaal, oiPirate]) and (Planet.GetRelationLevelToShip(GetPlayer) >= rlNormal) then
         begin
           Distance := PointDistance(Position, Planet.GetPosition);
           if BestDistance >= Distance then
@@ -741,10 +653,8 @@ begin
     if GetStoragePermission(tskStation) then
       for I := 0 to CurrentStar.Ships.Count - 1 do
       begin
-        Ship := TShip(CurrentStar.Ships[I]);
-        if (Ship is TRuins)
-            and (Ship.GetRelationLevelToShip(GetPlayer) >= rlNormal)
-            and Ship.CanDock(Self) then
+        Ship := CurrentStar.Ships[I];
+        if (Ship is TRuins) and (Ship.GetRelationLevelToShip(GetPlayer) >= rlNormal) and Ship.CanDock(Self) then
         begin
           Distance := PointDistance(Position, Ship.Position);
           if BestDistance >= Distance then
@@ -778,9 +688,7 @@ begin
     Location := DockedTo
   else
     Exit;
-  if (OwnerShip <> nil)
-      and (not (Location is TPlanet)
-          or ((Location as TPlanet).OwnerId in [oiMaloc..oiGaal, oiPirate])) then
+  if (OwnerShip <> nil) and (not (Location is TPlanet) or ((Location as TPlanet).OwnerId in [oiMaloc..oiGaal, oiPirate])) then
   begin
     EnemyShip := nil;
     TruceShip := nil;
@@ -818,20 +726,14 @@ procedure TTranclucator.UpdateFreeFlightOrder;
 begin
   if (EnemyShip <> nil) and (EnemyShip.CurrentStar = CurrentStar) and EnemyShip.InNormalSpace then
     OrderFollowShip(EnemyShip, fmMinWeaponRange, False)
-  else if (OwnerShip <> nil)
-      and (OwnerShip.CurrentStar = CurrentStar)
-      and OwnerShip.InNormalSpace then
+  else if (OwnerShip <> nil) and (OwnerShip.CurrentStar = CurrentStar) and OwnerShip.InNormalSpace then
   begin
-    if (OwnerShip.Order = soFollowShip)
-        and (OwnerShip.EnemyShip = OwnerShip.OrderTarget)
-        and (OwnerShip.EnemyShip <> Self) then
+    if (OwnerShip.Order = soFollowShip) and (OwnerShip.EnemyShip = OwnerShip.OrderTarget) and (OwnerShip.EnemyShip <> Self) then
       OrderFollowShip(OwnerShip.EnemyShip, fmMinWeaponRange, False)
     else
       OrderFollowShip(OwnerShip, fmFollowNear, False);
   end
-  else if (OwnerShip <> nil)
-      and (OwnerShip.CurrentStar = CurrentStar)
-      and (OwnerShip.CurrentPlanet <> nil) then
+  else if (OwnerShip <> nil) and (OwnerShip.CurrentStar = CurrentStar) and (OwnerShip.CurrentPlanet <> nil) then
     OrderMove(OwnerShip.CurrentPlanet.GetPosition, False)
   else
     OrderRandomFreeFlightMove;
@@ -862,7 +764,7 @@ begin
     BestDistance := 10000;
     for I := 0 to CurrentStar.Items.Count - 1 do
     begin
-      Item := TItem(CurrentStar.Items[I]);
+      Item := CurrentStar.Items[I];
       if (CalculateCargoHookPower(GetCargoHook) >= Item.Weight)
           and ((Item.ScriptItem = nil) or (TScriptItem(Item.ScriptItem).Name = ''))
           and not (Item is TArtefactTranclucator) then
@@ -899,8 +801,7 @@ begin
         end
         else if not CollectionPermissions[tckOther] then
           Continue;
-        if (CountOtherShipsTargetingItem(Item) <= 0)
-            and (CargoFreeSpace - GetReservedPickupWeight >= Item.Weight) then
+        if (CountOtherShipsTargetingItem(Item) <= 0) and (CargoFreeSpace - GetReservedPickupWeight >= Item.Weight) then
         begin
           if IsItemInPickupRange(Item) then
             AddPickupTarget(Item, False)
@@ -933,9 +834,9 @@ var
 begin
   for I := 1 to Inventory.Count - 1 do
   begin
-    Item := TItem(Inventory[I]);
-    case Byte(Item.ItemType) of
-      Ord(t_FuelTanks):
+    Item := Inventory[I];
+    case Item.ItemType of
+      t_FuelTanks:
         if GetFuelTanks = nil then
           EquipItem(Item as TFuelTanks)
         else if GetFuelTanks.Weight > Item.Weight then
@@ -943,7 +844,7 @@ begin
           UnequipSlot(GetFuelTanks.ItemType, 0);
           EquipItem(Item as TFuelTanks);
         end;
-      Ord(t_Engine):
+      t_Engine:
         if GetEngine = nil then
           EquipItem(Item as TEngine)
         else if CalculateItemEffectiveness(Item) > CalculateItemEffectiveness(GetEngine) then
@@ -983,8 +884,7 @@ begin
         Weapon := Weapons[J];
         if (Weapon.Target = nil)
             and IsEquipmentUsable(Weapon)
-            and (PointDistanceSquared(Position, OwnerShip.EnemyShip.Position)
-                <= Sqr(GetWeaponRange(Weapon))) then
+            and (PointDistanceSquared(Position, OwnerShip.EnemyShip.Position) <= Sqr(GetWeaponRange(Weapon))) then
         begin
           Weapon.Target := OwnerShip.EnemyShip;
           Inc(AssignedCount);
@@ -998,8 +898,7 @@ begin
         Weapon := Weapons[J];
         if (Weapon.Target = nil)
             and IsEquipmentUsable(Weapon)
-            and (PointDistanceSquared(Position, EnemyShip.Position)
-                <= Sqr(GetWeaponRange(Weapon))) then
+            and (PointDistanceSquared(Position, EnemyShip.Position) <= Sqr(GetWeaponRange(Weapon))) then
         begin
           Weapon.Target := EnemyShip;
           Inc(AssignedCount);
@@ -1010,16 +909,14 @@ begin
     if CurrentStar.Battle <> 0 then
       for I := 0 to CurrentStar.Ships.Count - 1 do
       begin
-        Ship := TShip(CurrentStar.Ships[I]);
+        Ship := CurrentStar.Ships[I];
         if (Ship.OwnerId = oiDominator) and Ship.InNormalSpace then
         begin
           Distance := PointDistance(Position, Ship.Position);
           for J := 1 to WeaponCount do
           begin
             Weapon := Weapons[J];
-            if (Weapon.Target = nil)
-                and IsEquipmentUsable(Weapon)
-                and (GetWeaponRange(Weapon) >= Distance) then
+            if (Weapon.Target = nil) and IsEquipmentUsable(Weapon) and (GetWeaponRange(Weapon) >= Distance) then
             begin
               Weapon.Target := Ship;
               Inc(AssignedCount);
@@ -1031,20 +928,17 @@ begin
       end;
     for I := 0 to CurrentStar.Ships.Count - 1 do
     begin
-      Ship := TShip(CurrentStar.Ships[I]);
+      Ship := CurrentStar.Ships[I];
       if Ship.InNormalSpace
           and (Ship <> Self)
           and (Ship <> OwnerShip)
-          and ((RelationToShip(Ship) < RelationBadMin)
-              or (Ship = EnemyShip)
-              or (Ship.EnemyShip = Self)) then
+          and ((RelationToShip(Ship) < RelationBadMin) or (Ship = EnemyShip) or (Ship.EnemyShip = Self)) then
         for J := 1 to WeaponCount do
         begin
           Weapon := Weapons[J];
           if (Weapon.Target = nil)
               and IsEquipmentUsable(Weapon)
-              and (PointDistanceSquared(Position, Ship.Position)
-                  <= Sqr(GetWeaponRange(Weapon))) then
+              and (PointDistanceSquared(Position, Ship.Position) <= Sqr(GetWeaponRange(Weapon))) then
           begin
             Weapon.Target := Ship;
             Inc(AssignedCount);
@@ -1056,7 +950,7 @@ begin
     if GetPlayer.CurrentStar = CurrentStar then
       for I := 0 to CurrentStar.Asteroids.Count - 1 do
       begin
-        Asteroid := TAsteroid(CurrentStar.Asteroids[I]);
+        Asteroid := CurrentStar.Asteroids[I];
         Distance := PointDistanceSquared(Position, Asteroid.Position);
         if Distance <= AsteroidTargetRangeSquared then
           for J := 1 to WeaponCount do
@@ -1109,9 +1003,7 @@ end;
 procedure TTranclucator.ReactToAttack(Attacker: TShip);
 begin
   if (OwnerShip = nil)
-      or ((OwnerShip <> Attacker)
-          and (not (Attacker is TTranclucator)
-              or (TTranclucator(Attacker).OwnerShip <> OwnerShip))) then
+      or ((OwnerShip <> Attacker) and (not (Attacker is TTranclucator) or (TTranclucator(Attacker).OwnerShip <> OwnerShip))) then
     EnemyShip := Attacker;
 end;
 
@@ -1145,40 +1037,25 @@ begin
 
 end;
 
-function TTranclucator.BuildMoneyExtortionResponse(
-    OtherShip: TShip;
-    var Response: WideString;
-    DemandedAmount: Integer
-): Boolean;
+function TTranclucator.BuildMoneyExtortionResponse(OtherShip: TShip; var Response: WideString; DemandedAmount: Integer): Boolean;
 begin
   Result := False;
   Response := 'Talk not supporting';
 end;
 
-function TTranclucator.BuildCargoExtortionResponse(
-    OtherShip: TShip;
-    var Response: WideString
-): Boolean;
+function TTranclucator.BuildCargoExtortionResponse(OtherShip: TShip; var Response: WideString): Boolean;
 begin
   Result := False;
   Response := 'Talk not supporting';
 end;
 
-function TTranclucator.BuildTrucePaymentResponse(
-    OtherShip: TShip;
-    var Response: WideString;
-    OfferedAmount: Integer
-): Boolean;
+function TTranclucator.BuildTrucePaymentResponse(OtherShip: TShip; var Response: WideString; OfferedAmount: Integer): Boolean;
 begin
   Result := False;
   Response := 'Talk not supporting';
 end;
 
-function TTranclucator.BuildAttackRequestResponse(
-    Requester: TShip;
-    var Response: WideString;
-    Target: TShip
-): Boolean;
+function TTranclucator.BuildAttackRequestResponse(Requester: TShip; var Response: WideString; Target: TShip): Boolean;
 begin
   Result := True;
   Response := LookupVisibleTalkText('Talk.Tranclucator.Attack.Ok', Requester);
@@ -1187,21 +1064,13 @@ begin
   SeekItems := False;
 end;
 
-function TTranclucator.AcceptPartnershipOffer(
-    OtherShip: TShip;
-    var Response: WideString;
-    PaymentAmount: Integer
-): Boolean;
+function TTranclucator.AcceptPartnershipOffer(OtherShip: TShip; var Response: WideString; PaymentAmount: Integer): Boolean;
 begin
   Result := False;
   Response := 'Not supporting';
 end;
 
-function TTranclucator.BuildPartnershipOfferResponse(
-    OtherShip: TShip;
-    var Response: WideString;
-    PaymentAmount: Integer
-): Boolean;
+function TTranclucator.BuildPartnershipOfferResponse(OtherShip: TShip; var Response: WideString; PaymentAmount: Integer): Boolean;
 begin
   Result := False;
   Response := 'Not supporting';
@@ -1221,8 +1090,7 @@ begin
     else
     begin
       OwnerShip.RefreshCurrentStanding;
-      if (OwnerShip.CurrentStar = CurrentStar)
-          or (OwnerShip.CurrentStanding in [ssCoalitionMilitary, ssPirateMilitary]) then
+      if (OwnerShip.CurrentStar = CurrentStar) or (OwnerShip.CurrentStanding in [ssCoalitionMilitary, ssPirateMilitary]) then
         CurrentStanding := OwnerShip.CurrentStanding
       else if OwnerShip.CurrentStanding in [ssCoalitionActive, ssCoalitionPassive] then
       begin
@@ -1259,25 +1127,19 @@ begin
     bonRadar: Result := 0;
     bonScan: Result := Value * 20 * CountWeaponsByDamageFlags(ScannableDamageFlags);
     bonDroid: Result := Value * 10 / Math.Max(0.1, GetHull.GetFragilityFactor([]));
-    bonHook:
-      Result := (Value * 0.1 + Math.Min(Value, HullBaseSize * EquipmentSizeFactors[5])) * 1.0;
+    bonHook: Result := (Value * 0.1 + Math.Min(Value, HullBaseSize * EquipmentSizeFactors[5])) * 1.0;
     bonDef: Result := Value * 5 * 100 / Math.Max(5, 100 - Value) * 45 / Math.Max(5, 45 - Value);
     bonWEnergy: Result := Value * 10;
     bonWSplinter: Result := Value * 10;
     bonWMissile: Result := (Ord(GetRadarRange > 0) * 0.9 + 0.1) * (Value * 10);
-    bonWRadius:
-      Result := Sqr(Math.Max(100, SmoothedEnemySpeed) / Math.Max(100, SmoothedSpeed)) * Value;
+    bonWRadius: Result := Sqr(Math.Max(100, SmoothedEnemySpeed) / Math.Max(100, SmoothedSpeed)) * Value;
     bonHookRadius: Result := Value * 0.1;
-    bonMass:
-      Result :=
-          RemapClamped(Value, HullMassEvaluationStart, HullMassEvaluationEnd, 1, 0.333) * 5000;
+    bonMass: Result := RemapClamped(Value, HullMassEvaluationStart, HullMassEvaluationEnd, 1, 0.333) * 5000;
     bonSlotRadar:
       if (GetSlotCount(sskRadar) = 0) and (Value > 0) then
         Result := TranclucatorSlotBonusWeights[BonusKind] * 0.3
       else if (GetRadar <> nil) and (Value < 0) then
-        Result :=
-            -TranclucatorSlotBonusWeights[BonusKind]
-                - TranclucatorSlotBonusWeights[bonSlotWeapon] * CountMissileWeapons
+        Result := -TranclucatorSlotBonusWeights[BonusKind] - TranclucatorSlotBonusWeights[bonSlotWeapon] * CountMissileWeapons
       else if (GetSlotCount(sskRadar) = 1) and (Value < 0) then
         Result := TranclucatorSlotBonusWeights[BonusKind] * -0.3;
     bonSlotScaner:
@@ -1286,9 +1148,7 @@ begin
       else if (GetScanner <> nil) and (Value < 0) then
         Result :=
             -TranclucatorSlotBonusWeights[BonusKind]
-                - CountWeaponsByDamageFlags(ScannableDamageFlags)
-                    * 0.1
-                    * TranclucatorSlotBonusWeights[bonSlotWeapon]
+                - CountWeaponsByDamageFlags(ScannableDamageFlags) * 0.1 * TranclucatorSlotBonusWeights[bonSlotWeapon]
       else if (GetSlotCount(sskScanner) = 1) and (Value < 0) then
         Result := TranclucatorSlotBonusWeights[BonusKind] * -0.3;
     bonSlotDroid:
@@ -1315,28 +1175,21 @@ begin
     bonSlotWeapon:
     begin
       if (GetSlotCount(sskWeapon) < 5) and (Value > 0) then
-        Result :=
-            Math.Min(Value, 5 - GetSlotCount(sskWeapon)) * TranclucatorSlotBonusWeights[BonusKind];
+        Result := Math.Min(Value, 5 - GetSlotCount(sskWeapon)) * TranclucatorSlotBonusWeights[BonusKind];
       if Value < 0 then
-        Result :=
-            Math.Max(Value, -GetSlotCount(sskWeapon)) * TranclucatorSlotBonusWeights[BonusKind];
+        Result := Math.Max(Value, -GetSlotCount(sskWeapon)) * TranclucatorSlotBonusWeights[BonusKind];
       if CountEquippedWeapons > Math.Max(Value + GetSlotCount(sskWeapon), 1) then
         Result :=
             Result
-                - (CountEquippedWeapons - Math.Max(1, Value + GetSlotCount(sskWeapon)))
-                    * (TranclucatorSlotBonusWeights[BonusKind] * 0.6);
+                - (CountEquippedWeapons - Math.Max(1, Value + GetSlotCount(sskWeapon))) * (TranclucatorSlotBonusWeights[BonusKind] * 0.6);
     end;
     bonSlotArt:
     begin
       if (GetSlotCount(sskArtefact) < DefaultHullSlotCounts[sskArtefact]) and (Value > 0) then
-        Result :=
-            Math.Min(Value, DefaultHullSlotCounts[sskArtefact] - GetSlotCount(sskArtefact))
-                * TranclucatorSlotBonusWeights[BonusKind];
+        Result := Math.Min(Value, DefaultHullSlotCounts[sskArtefact] - GetSlotCount(sskArtefact)) * TranclucatorSlotBonusWeights[BonusKind];
       if Value < 0 then
-        Result :=
-            Math.Max(Value, -GetSlotCount(sskArtefact)) * TranclucatorSlotBonusWeights[BonusKind];
-      if (Artefacts <> nil)
-          and (Artefacts.Count > Math.Max(Value + GetSlotCount(sskArtefact), 0)) then
+        Result := Math.Max(Value, -GetSlotCount(sskArtefact)) * TranclucatorSlotBonusWeights[BonusKind];
+      if (Artefacts <> nil) and (Artefacts.Count > Math.Max(Value + GetSlotCount(sskArtefact), 0)) then
         Result := -1000;
     end;
     bonSlotForsage:
@@ -1347,36 +1200,16 @@ begin
     bonSkill1..bonSkill6:
     begin
       if Value > 0 then
+        Result := Math.Min(6 - GetEffectiveSkillLevel(EquipmentBonusSkills[BonusKind]), Value) * TranclucatorSkillBonusWeights[BonusKind];
+      if (Value > 0) and (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[BonusKind]) > 6) then
         Result :=
-            Math.Min(
-                    6
-                        - GetEffectiveSkillLevel(
-                            EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)]),
-                    Value)
-                * TranclucatorSkillBonusWeights[BonusKind];
-      if (Value > 0)
-          and (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)])
-              > 6) then
-        Result :=
-            (Value
-                        + GetEffectiveSkillLevel(
-                            EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)])
-                        - 6)
-                    * (TranclucatorSkillBonusWeights[BonusKind] * 0.05)
+            (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[BonusKind]) - 6) * (TranclucatorSkillBonusWeights[BonusKind] * 0.05)
                 + Result;
       if Value < 0 then
+        Result := Math.Min(GetEffectiveSkillLevel(EquipmentBonusSkills[BonusKind]), -Value) * -TranclucatorSkillBonusWeights[BonusKind];
+      if (Value < 0) and (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[BonusKind]) < 0) then
         Result :=
-            Math.Min(
-                    GetEffectiveSkillLevel(EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)]),
-                    -Value)
-                * -TranclucatorSkillBonusWeights[BonusKind];
-      if (Value < 0)
-          and (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)])
-              < 0) then
-        Result :=
-            (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[Ord(BonusKind) - Ord(bonSkill1)]))
-                    * (TranclucatorSkillBonusWeights[BonusKind] * 0.03)
-                + Result;
+            (Value + GetEffectiveSkillLevel(EquipmentBonusSkills[BonusKind])) * (TranclucatorSkillBonusWeights[BonusKind] * 0.03) + Result;
     end;
   else
     Result := 0;

@@ -8,6 +8,7 @@ uses
   EC_Buf,
   EC_Struct,
   SE_Space,
+  SE_Asteroid,
   aEFilm,
   aGalaxy;
 
@@ -25,7 +26,7 @@ type
     GravityForceFactor: Single;
     InverseMass: Single;
     MineralCount: Integer;
-    GraphObject: TObjectSE;
+    GraphObject: TAsteroidSE;
     FilmObject: TEFilmObj;
     constructor Create;
     destructor Destroy; override;
@@ -53,7 +54,6 @@ uses
   Classes,
   Math,
   SE_Process,
-  SE_Asteroid,
   Globals,
   aMyFunction,
   EC_Str,
@@ -91,10 +91,7 @@ end;
 procedure TAsteroid.Init(Star: TStar; const GraphKey: WideString);
 begin
   CurrentStar := Star;
-  RetainSpaceObject(
-      GraphObject,
-      CreateSpaceObjectByName('Asteroid', GraphKey, Classes.Point(0, 0))
-  );
+  RetainSpaceObject(GraphObject, CreateSpaceObjectByName('Asteroid', GraphKey, Classes.Point(0, 0)));
   Respawn;
 end;
 
@@ -153,7 +150,7 @@ end;
 
 procedure TAsteroid.Respawn;
 var
-  Angle, Radius, Speed, Reserved: Single; // Native reserves one additional scalar slot.
+  Angle, Radius, Speed: Single;
 begin
   Mass := 1000000;
   InverseMass := 1 / Mass;
@@ -179,8 +176,7 @@ begin
   if Galaxy <> nil then
     if GetPlayer <> nil then
       if (GetPlayer.CurrentStar <> CurrentStar) or not GetPlayer.InNormalSpace then
-        if (Galaxy.GodModEnabled = 2)
-            and (NextRandomIntRange(0, 100, CurrentStar.RandomState) > 50) then
+        if (Galaxy.GodModEnabled = 2) and (NextRandomIntRange(0, 100, CurrentStar.RandomState) > 50) then
           SpawnSiblingAsteroidInCurrentStar;
 end;
 
@@ -191,17 +187,10 @@ var
   Index, VariantCount, Variant: Integer;
 begin
   if CurrentStar.BackgroundImage < 10 then
-    Text :=
-        GameDataConfig
-            .GetBlockByPath('StyleAsteroid')
-            .GetParam('0' + IntToWideString(CurrentStar.BackgroundImage))
+    Text := GameDataConfig.GetBlockByPath('StyleAsteroid').GetParam('0' + IntToWideString(CurrentStar.BackgroundImage))
   else
-    Text :=
-        GameDataConfig
-            .GetBlockByPath('StyleAsteroid')
-            .GetParam(IntToWideString(CurrentStar.BackgroundImage));
-  Index :=
-      NextRandomIntRange(0, CountDelimitedPartsW(Text, ',') div 2 - 1, CurrentStar.RandomState) * 2;
+    Text := GameDataConfig.GetBlockByPath('StyleAsteroid').GetParam(IntToWideString(CurrentStar.BackgroundImage));
+  Index := NextRandomIntRange(0, CountDelimitedPartsW(Text, ',') div 2 - 1, CurrentStar.RandomState) * 2;
   VariantCount := ExtractDigitsToIntW(ExtractDelimitedPartW(Text, Index + 1, ','));
   Text := ExtractDelimitedPartW(Text, Index, ',');
   Variant := NextRandomIntRange(0, VariantCount - 1, CurrentStar.RandomState);

@@ -96,9 +96,6 @@ uses
   GR_Main,
   GR_DX;
 
-// Neutral integer expressions retain DCC32 operand materialization order.
-// See docs/development.md; they emit no extra arithmetic.
-
 constructor TMultiImageImageGI.Create;
 begin
   inherited Create;
@@ -360,9 +357,7 @@ var
   Column: TMultiImageColGI;
 begin
   // Preserve the native comparison against the control's position.
-  if (Item.Column <> nil)
-      and (Self.LocalPosition.X = Position.X)
-      and (Self.LocalPosition.Y = Position.Y) then
+  if (Item.Column <> nil) and (Self.LocalPosition.X = Position.X) and (Self.LocalPosition.Y = Position.Y) then
     Exit;
   Item.Position := Position;
   Column := GetOrCreateColumn(GetOrCreateRow(Position.Y div CellSize), Position.X div CellSize);
@@ -529,25 +524,9 @@ begin
               Data := AcquireCachedGi(Image.ImageCache);
               try
                 if HardwareRenderingEnabled then
-                  DrawTexture(
-                      Data.GetOrCreateSurface(0),
-                      Bounds.Left,
-                      Bounds.Top,
-                      255,
-                      RgbWhite,
-                      @ClipRect,
-                      False,
-                      False
-                  )
+                  DrawTexture(Data.GetOrCreateSurface(0), Bounds.Left, Bounds.Top, 255, RgbWhite, @ClipRect, False, False)
                 else
-                  Data.Image.DrawToGraphBuf(
-                      ScreenRenderBuffer,
-                      Bounds.Left,
-                      Bounds.Top,
-                      ClipRect,
-                      0,
-                      255
-                  );
+                  Data.Image.DrawToGraphBuf(ScreenRenderBuffer, Bounds.Left, Bounds.Top, ClipRect, 0, 255);
               finally
                 Image.ImageCache.Release;
               end;

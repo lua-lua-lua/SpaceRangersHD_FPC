@@ -36,16 +36,20 @@ type
     function PixelScale: Double;
   end;
 
-function CalculateGamePresentation(
-    const Metrics: TGameDisplayMetrics;
-    Width, Height: Integer
-): TGamePresentation;
+function CalculateGamePresentation(const Metrics: TGameDisplayMetrics; Width, Height: Integer): TGamePresentation;
 
 procedure InitializeGameVideo;
 function GameWindowUsesCanvas: Boolean;
+function GameWindowHasSystemCursor: Boolean;
+function GamePointerCursorVisible: Boolean;
 function GameWindowIsMobile: Boolean;
-// UI preference is independent of Android windowing, input and native overlays.
+function GameWindowIsFullscreenOnly: Boolean;
+// Commit layout policy only when rebuilding the control tree. Live docking
+// changes remain pending while a dialog or screen delays the rebuild.
+procedure ConfigureGameUi(Mode: TGameUiMode);
+procedure CommitGameUiLayout;
 function GameMobileUiEnabled: Boolean;
+function GameUiLayoutChangePending: Boolean;
 function GameWindowUsesNativeRaster: Boolean;
 function GameWindowUsesRenderResolution: Boolean;
 procedure GetGameWindowLogicalSize(out Width, Height: Integer);
@@ -56,6 +60,8 @@ function GetGameMobileUiScale(DpPerSourcePixel: Single = 1): Single;
 procedure GetGameAutomaticLayoutSize(MinWidth, MinHeight: Integer; out Width, Height: Integer);
 procedure OpenGameWindow(Width, Height: Integer; Windowed, VSync: Boolean);
 procedure CloseGameWindow;
+// Best-effort state snapshot: unavailable SDL queries are diagnostic warnings.
+procedure LogGameVideoDiagnostics;
 function PollGameMessage(out Message: TGameMessage): Boolean;
 function PostGameMessage(Message, WParam: Cardinal; LParam: Integer): Boolean;
 function GameWindowFocused: Boolean;
@@ -68,7 +74,7 @@ procedure WarpGameMouse(X, Y: Integer);
 function ShowGameCursor(Show: Boolean): Integer;
 procedure SetGameWindowTitle(const Title: UnicodeString);
 procedure MinimizeGameWindow;
-procedure OpenGameURL(const URL: UnicodeString);
+function OpenGameURL(const URL: UnicodeString): Boolean;
 function GetGameClipboard: UnicodeString;
 procedure SetGameClipboard(const Text: UnicodeString);
 procedure DiscardGameTextCharacter;
@@ -80,8 +86,7 @@ procedure CancelGamePointerInput;
 procedure SetGameArcadeControls(Flags: Integer);
 
 var
-  // Set while loading settings, before rebuilding controls and render targets.
-  // Do not change this while an existing control tree is still in use.
+  // Read by settings; apply changes through ConfigureGameUi at a tree rebuild.
   GameUiMode: TGameUiMode = gumAutomatic;
   OnGameActivated, OnGameDeactivated: TNotifyEvent;
   GameSDLWindow: PSDL_Window;
@@ -93,20 +98,39 @@ var
 implementation
 
 uses
-{$IFDEF DARWIN}
+{$IF Defined(DARWIN) and not Defined(SRHD_IOS)}
   GameCocoaCursor,
 {$ENDIF}
   SysUtils,
   Math,
   GameTouch,
   GameSystem,
+  GameDiagnostics,
+  GameSDLDiagnostics,
   URIParser;
+
+type
+  TGameVideoLogSnapshot = record
+    Configuration, RendererDescription, WindowDescription: UnicodeString;
+    Window: PSDL_Window;
+    Renderer: PSDL_Renderer;
+    ModeFlags: Cardinal;
+    TextureGeneration: LongInt;
+  end;
+
+const
+  DiagnosticWindowModeFlags = SDL_WINDOW_FULLSCREEN_DESKTOP or SDL_WINDOW_ALLOW_HIGHDPI or SDL_WINDOW_RESIZABLE;
 
 var
   VideoInitialized: Boolean;
+  VideoFaulted: Boolean;
+  DisplayModeWarningLogged: Boolean;
+  LastVideoLog: TGameVideoLogSnapshot;
   DesktopMouseAvailable: Boolean;
   BrowserWindow: Boolean;
-  MobileWindow, AppInBackground: Boolean;
+  MobileWindow, FullscreenOnlyWindow, AppInBackground: Boolean;
+  MobileUiEnabled: Boolean;
+  UiDisplayMetrics: TGameDisplayMetrics;
   MobileDensity: Double;
   HasPendingDisplayChange: Boolean;
   PostedMessageType: Cardinal;
@@ -122,11 +146,36 @@ var
   Touch: TGameTouch;
   TouchMouse: TPoint;
   TouchMouseActive: Boolean;
+  PointerCursorActive: Boolean;
   TouchMode: Integer;
   TouchSlop: Integer;
   HasPendingActivation: Boolean;
   PendingActivation: Cardinal;
   ArcadeControls: Cardinal;
+
+{$IFDEF SWITCH}
+var
+  HandheldMode: Boolean;
+
+procedure SwitchPollInput(Window: PSDL_Window); cdecl; external name 'sr_switch_poll_input';
+function SwitchMouseButtons: Cardinal; cdecl; external name 'sr_switch_mouse_buttons';
+function SwitchKeyboardState: PByte; cdecl; external name 'sr_switch_keyboard_state';
+function SwitchHandheld: LongInt; cdecl; external name 'sr_switch_handheld';
+procedure SwitchTouchPosition(X, Y: Integer); cdecl; external name 'sr_switch_touch_position';
+{$ENDIF}
+
+function CombinedMouseState(State: Cardinal): Cardinal;
+begin
+  Result := State;
+{$IFDEF SWITCH}
+  Result := Result or SwitchMouseButtons;
+{$ENDIF}
+end;
+
+function GameMouseState(X, Y: PInteger): Cardinal;
+begin
+  Result := CombinedMouseState(SDL_GetMouseState(X, Y));
+end;
 
 procedure SetGameArcadeControls(Flags: Integer);
 var
@@ -140,10 +189,9 @@ begin
   SDL_SetHint('SRHD_ARCADE_CONTROLS', PAnsiChar(Value));
 end;
 
-procedure CheckSDL(Value: Integer);
+procedure LogGameVideo(const Text: UnicodeString);
 begin
-  if Value < 0 then
-    raise Exception.Create(string(SDL_GetError));
+  LogGameMessage(gllInfo, 'video', Text);
 end;
 
 procedure CancelGamePointerInput;
@@ -174,7 +222,7 @@ begin
   // show/hide call is a no-op when it already records the requested state.
   SDL_ShowCursor(Ord(CursorCount >= 0));
   SDL_SetCursor(nil);
-{$IFDEF DARWIN}
+{$IF Defined(DARWIN) and not Defined(SRHD_IOS)}
   // SDL's Cocoa backend only queues cursor-rectangle invalidation. After an
   // application switch, AppKit's current cursor can still be the game's cursor
   // while macOS displays the other application's arrow. Set it immediately so
@@ -188,6 +236,7 @@ procedure InitializeGameVideo;
 var
   Driver: string;
   Format: TFormatSettings;
+  Version: TSDL_Version;
 begin
   if VideoInitialized then
     Exit;
@@ -195,10 +244,11 @@ begin
   // the game's mask before SDL can initialize a driver (Metal may overflow
   // internal sampler calculations), rather than waiting for GR_DXInit.
   ClearExceptions(False);
-  SetExceptionMask(
-      [exInvalidOp, exDenormalized, exZeroDivide, exOverflow, exUnderflow, exPrecision]
-  );
+  SetExceptionMask([exInvalidOp, exDenormalized, exZeroDivide, exOverflow, exUnderflow, exPrecision]);
   SDL_SetMainReady;
+  InstallGameSDLDiagnostics;
+  SDL_GetVersion(Version);
+  LogGameVideo(SysUtils.Format('SDL version=%d.%d.%d', [Version.Major, Version.Minor, Version.Patch]));
   // Handle native fingers ourselves; synthesized mouse presses commit game
   // actions before the user can distinguish a tap from a drag.
   SDL_SetHint('SDL_TOUCH_MOUSE_EVENTS', '0');
@@ -214,15 +264,22 @@ begin
   // restoring the default permits SDL to request an IME asynchronously.
   SDL_SetHint('SDL_ENABLE_SCREEN_KEYBOARD', '0');
 {$ENDIF}
-  CheckSDL(SDL_InitSubSystem(SDL_INIT_VIDEO or SDL_INIT_TIMER));
+  CheckGameSDL(SDL_InitSubSystem(SDL_INIT_VIDEO or SDL_INIT_TIMER), 'SDL_InitSubSystem(video/timer)');
   // These desktop backends provide real global coordinates. Other backends
   // (notably Wayland) may return cached window coordinates from the same API.
   // SDL spells its Android backend "Android", unlike the lower-case desktop
   // names. Normalize before selecting mobile sizing and keyboard behavior.
   Driver := LowerCase(string(SDL_GetCurrentVideoDriver));
+  LogGameVideo('SDL video driver=' + Driver);
   DesktopMouseAvailable := (Driver = 'cocoa') or (Driver = 'windows') or (Driver = 'x11');
   BrowserWindow := Driver = 'emscripten';
-  MobileWindow := Driver = 'android';
+  MobileWindow := (Driver = 'android') or (Driver = 'uikit');
+  FullscreenOnlyWindow := MobileWindow or (Driver = 'switch');
+  MobileUiEnabled := MobileWindow;
+{$IFDEF SWITCH}
+  HandheldMode := SwitchHandheld <> 0;
+  MobileUiEnabled := HandheldMode;
+{$ENDIF}
   Format := DefaultFormatSettings;
   Format.DecimalSeparator := '.';
   MobileDensity := StrToFloatDef(string(SDL_GetHint('SRHD_UI_DENSITY')), 1, Format);
@@ -231,10 +288,28 @@ begin
   TouchSlop := EnsureRange(StrToIntDef(string(SDL_GetHint('SRHD_TOUCH_SLOP')), 8), 1, 256);
   PostedMessageType := SDL_RegisterEvents(1);
   if PostedMessageType = Cardinal(-1) then
-    raise Exception.Create('Registering game messages: ' + string(SDL_GetError));
+    RaiseGameSDLError('SDL_RegisterEvents(game messages, count=1)');
   SDL_AddEventWatch(WatchRendererReset, nil);
   Touch := TGameTouch.Create;
   VideoInitialized := True;
+end;
+
+function GameWindowHasSystemCursor: Boolean;
+begin
+{$IFDEF SWITCH}
+  Result := False;
+{$ELSE}
+  Result := True;
+{$ENDIF}
+end;
+
+function GamePointerCursorVisible: Boolean;
+begin
+{$IFDEF SWITCH}
+  Result := (SwitchHandheld = 0) or PointerCursorActive;
+{$ELSE}
+  Result := True;
+{$ENDIF}
 end;
 
 function GameWindowUsesCanvas: Boolean;
@@ -249,13 +324,61 @@ begin
   Result := MobileWindow;
 end;
 
-function GameMobileUiEnabled: Boolean;
+function GameWindowIsFullscreenOnly: Boolean;
+begin
+  InitializeGameVideo;
+  Result := FullscreenOnlyWindow;
+end;
+
+function DesiredMobileUi: Boolean;
 begin
   case GameUiMode of
     gumDesktop: Result := False;
     gumMobile: Result := True;
   else
-    Result := GameWindowIsMobile;
+{$IFDEF SWITCH}
+    Result := SwitchHandheld <> 0;
+{$ELSE}
+    Result := MobileWindow;
+{$ENDIF}
+  end;
+end;
+
+procedure ConfigureGameUi(Mode: TGameUiMode);
+begin
+  InitializeGameVideo;
+  GameUiMode := Mode;
+  MobileUiEnabled := DesiredMobileUi;
+  CommitGameUiLayout;
+end;
+
+procedure CommitGameUiLayout;
+begin
+  // Layout dimensions and density belong to the control tree. Presentation
+  // still follows the live surface while a safe tree rebuild is deferred.
+  UiDisplayMetrics := GetGameDisplayMetrics;
+end;
+
+function GameMobileUiEnabled: Boolean;
+begin
+  InitializeGameVideo;
+  Result := MobileUiEnabled;
+end;
+
+function GameUiLayoutChangePending: Boolean;
+var
+  Metrics: TGameDisplayMetrics;
+begin
+  InitializeGameVideo;
+  Result := MobileUiEnabled <> DesiredMobileUi;
+  if MobileUiEnabled then
+  begin
+    Metrics := GetGameDisplayMetrics;
+    Result :=
+        Result
+            or (Metrics.Density <> UiDisplayMetrics.Density)
+            or (Metrics.OutputSize.X <> UiDisplayMetrics.OutputSize.X)
+            or (Metrics.OutputSize.Y <> UiDisplayMetrics.OutputSize.Y);
   end;
 end;
 
@@ -263,7 +386,7 @@ function GameWindowUsesNativeRaster: Boolean;
 begin
   // Android keeps full-resolution rendering with either layout. Desktop opts
   // into the same raster/input transform when using independently scaled UI.
-  Result := GameWindowIsMobile or GameMobileUiEnabled;
+  Result := GameWindowIsFullscreenOnly or GameMobileUiEnabled;
 end;
 
 function GameWindowUsesRenderResolution: Boolean;
@@ -271,7 +394,7 @@ begin
   InitializeGameVideo;
   // Browser and Android surfaces belong to the host. Resolution settings choose
   // the game's layout, without changing the display's physical resolution.
-  Result := BrowserWindow or MobileWindow;
+  Result := BrowserWindow or FullscreenOnlyWindow;
 end;
 
 procedure GetGameAutomaticLayoutSize(MinWidth, MinHeight: Integer; out Width, Height: Integer);
@@ -305,6 +428,11 @@ begin
   InitializeGameVideo;
   Result := Default(TGameDisplayMetrics);
   Result.Density := MobileDensity;
+{$IFDEF SWITCH}
+  // The handheld's 720p panel needs larger touch targets than a TV layout.
+  if SwitchHandheld <> 0 then
+    Result.Density := 1.5 * MobileDensity;
+{$ENDIF}
   Result.TouchSlop := TouchSlop;
   if GameSDLWindow <> nil then
   begin
@@ -312,22 +440,34 @@ begin
     SDL_GetWindowSizeInPixels(GameSDLWindow, Result.OutputSize.X, Result.OutputSize.Y);
     // Desktop UI sizes use window points, including Retina's backing scale.
     // Keep Android's supplied density: its window points are physical pixels.
-    if not MobileWindow then
+    if not FullscreenOnlyWindow then
       Result.Density := Max(1.0, Result.OutputSize.X / Max(1, Result.WindowSize.X));
   end
   else
   begin
     Mode := Default(TSDL_DisplayMode);
-    SDL_GetCurrentDisplayMode(0, Mode);
+    if SDL_GetCurrentDisplayMode(0, Mode) < 0 then
+    begin
+      Mode := Default(TSDL_DisplayMode);
+      // Zero dimensions select the caller's minimum layout.
+      if not DisplayModeWarningLogged then
+        LogGameMessage(gllWarning, 'video', 'SDL_GetCurrentDisplayMode(display=0): ' + GameSDLErrorMessage);
+      DisplayModeWarningLogged := True;
+    end
+    else
+      DisplayModeWarningLogged := False;
     Result.OutputSize := Types.Point(Mode.W, Mode.H);
+{$IFDEF SWITCH}
+    // SDL's Switch backend reports 1080p as its initial desktop mode even
+    // when undocked. Match the physical surface before creating the window.
+    if SwitchHandheld <> 0 then
+      Result.OutputSize := Types.Point(1280, 720);
+{$ENDIF}
     Result.WindowSize := Result.OutputSize;
   end;
 end;
 
-function CalculateGamePresentation(
-    const Metrics: TGameDisplayMetrics;
-    Width, Height: Integer
-): TGamePresentation;
+function CalculateGamePresentation(const Metrics: TGameDisplayMetrics; Width, Height: Integer): TGamePresentation;
 var
   W, H: Integer;
   Scale: Double;
@@ -355,12 +495,7 @@ function TGamePresentation.WindowToLogical(X, Y: Integer): TPoint;
 var
   LX, LY: Double;
 begin
-  OutputToLogical(
-      X * Metrics.OutputSize.X / Max(1, Metrics.WindowSize.X),
-      Y * Metrics.OutputSize.Y / Max(1, Metrics.WindowSize.Y),
-      LX,
-      LY
-  );
+  OutputToLogical(X * Metrics.OutputSize.X / Max(1, Metrics.WindowSize.X), Y * Metrics.OutputSize.Y / Max(1, Metrics.WindowSize.Y), LX, LY);
   Result := Types.Point(Floor(LX), Floor(LY));
 end;
 
@@ -368,25 +503,17 @@ function TGamePresentation.LogicalToWindow(X, Y: Integer): TPoint;
 begin
   Result.X :=
       Round(
-          (OutputRect.Left + X * (OutputRect.Right - OutputRect.Left) / LogicalSize.X)
-              * Metrics.WindowSize.X
-              / Max(1, Metrics.OutputSize.X)
+          (OutputRect.Left + X * (OutputRect.Right - OutputRect.Left) / LogicalSize.X) * Metrics.WindowSize.X / Max(1, Metrics.OutputSize.X)
       );
   Result.Y :=
       Round(
-          (OutputRect.Top + Y * (OutputRect.Bottom - OutputRect.Top) / LogicalSize.Y)
-              * Metrics.WindowSize.Y
-              / Max(1, Metrics.OutputSize.Y)
+          (OutputRect.Top + Y * (OutputRect.Bottom - OutputRect.Top) / LogicalSize.Y) * Metrics.WindowSize.Y / Max(1, Metrics.OutputSize.Y)
       );
 end;
 
 function TGamePresentation.PixelScale: Double;
 begin
-  Result :=
-      Min(
-          (OutputRect.Right - OutputRect.Left) / LogicalSize.X,
-          (OutputRect.Bottom - OutputRect.Top) / LogicalSize.Y
-      );
+  Result := Min((OutputRect.Right - OutputRect.Left) / LogicalSize.X, (OutputRect.Bottom - OutputRect.Top) / LogicalSize.Y);
 end;
 
 function GetGamePresentationRect(Width, Height: Integer): TRect;
@@ -405,17 +532,94 @@ begin
   Result := 1;
   if (GameSDLWindow = nil) or (LogicalWidth <= 0) or (LogicalHeight <= 0) then
     Exit;
-  Result :=
-      CalculateGamePresentation(GetGameDisplayMetrics, LogicalWidth, LogicalHeight).PixelScale;
+  Result := CalculateGamePresentation(GetGameDisplayMetrics, LogicalWidth, LogicalHeight).PixelScale;
 end;
 
 function GetGameMobileUiScale(DpPerSourcePixel: Single): Single;
+var
+  Scale: Double;
 begin
   // Source artwork size -> game-logical size. Callers bound this desired dp
   // scale to their usable area; raster resolution and world zoom stay separate.
   Result := 1;
   if GameMobileUiEnabled then
-    Result := GetGameDisplayMetrics.Density * DpPerSourcePixel / GetGameWindowPixelScale;
+  begin
+    Scale := 1;
+    if (LogicalWidth > 0) and (LogicalHeight > 0) then
+      Scale := CalculateGamePresentation(UiDisplayMetrics, LogicalWidth, LogicalHeight).PixelScale;
+    Result := UiDisplayMetrics.Density * DpPerSourcePixel / Scale;
+  end;
+end;
+
+procedure LogGameVideoDiagnostics;
+var
+  RendererInfo: TSDL_RendererInfo;
+  Metrics: TGameDisplayMetrics;
+  OutputWidth, OutputHeight: Integer;
+  RendererSize, Description: UnicodeString;
+  ModeFlags: Cardinal;
+begin
+  if SDL_GetRendererInfo(GameSDLRenderer, RendererInfo) < 0 then
+  begin
+    LogGameMessage(gllWarning, 'video', 'SDL_GetRendererInfo: ' + GameSDLErrorMessage);
+    LastVideoLog.RendererDescription := '';
+  end
+  else
+  begin
+    Description :=
+        'Renderer: name='
+            + UTF8Decode(UTF8String(RendererInfo.Name))
+            + ' flags=$'
+            + IntToHex(RendererInfo.Flags, 8)
+            + ' maximum-texture='
+            + IntToStr(RendererInfo.MaxTextureWidth)
+            + 'x'
+            + IntToStr(RendererInfo.MaxTextureHeight);
+    if (LastVideoLog.Renderer <> GameSDLRenderer)
+        or (LastVideoLog.TextureGeneration <> GameTextureGeneration)
+        or (LastVideoLog.RendererDescription <> Description) then
+      LogGameVideo(Description);
+    LastVideoLog.RendererDescription := Description;
+  end;
+  LastVideoLog.Renderer := GameSDLRenderer;
+  LastVideoLog.TextureGeneration := GameTextureGeneration;
+  if GameSDLWindow = nil then
+  begin
+    Description := 'Window diagnostics unavailable: no SDL window';
+    if LastVideoLog.WindowDescription <> Description then
+      LogGameVideo(Description);
+    LastVideoLog.WindowDescription := Description;
+    LastVideoLog.Window := nil;
+    LastVideoLog.ModeFlags := 0;
+    Exit;
+  end;
+  Metrics := Default(TGameDisplayMetrics);
+  SDL_GetWindowSize(GameSDLWindow, Metrics.WindowSize.X, Metrics.WindowSize.Y);
+  SDL_GetWindowSizeInPixels(GameSDLWindow, Metrics.OutputSize.X, Metrics.OutputSize.Y);
+  if SDL_GetRendererOutputSize(GameSDLRenderer, OutputWidth, OutputHeight) < 0 then
+  begin
+    LogGameMessage(gllWarning, 'video', 'SDL_GetRendererOutputSize: ' + GameSDLErrorMessage);
+    RendererSize := 'unavailable';
+  end
+  else
+    RendererSize := IntToStr(OutputWidth) + 'x' + IntToStr(OutputHeight) + ' pixels';
+  ModeFlags := SDL_GetWindowFlags(GameSDLWindow) and DiagnosticWindowModeFlags;
+  Description :=
+      Format(
+              'Window state: window=%dx%d points drawable=%dx%d pixels ',
+              [Metrics.WindowSize.X, Metrics.WindowSize.Y, Metrics.OutputSize.X, Metrics.OutputSize.Y])
+          + 'renderer='
+          + RendererSize
+          + Format(
+              ' logical=%dx%d high-dpi=%s',
+              [LogicalWidth, LogicalHeight, BoolToStr((ModeFlags and SDL_WINDOW_ALLOW_HIGHDPI) <> 0, True)])
+          + ' mode-flags=$'
+          + IntToHex(ModeFlags, 8);
+  if (LastVideoLog.Window <> GameSDLWindow) or (LastVideoLog.WindowDescription <> Description) then
+    LogGameVideo(Description);
+  LastVideoLog.WindowDescription := Description;
+  LastVideoLog.Window := GameSDLWindow;
+  LastVideoLog.ModeFlags := ModeFlags;
 end;
 
 procedure OpenGameWindow(Width, Height: Integer; Windowed, VSync: Boolean);
@@ -424,112 +628,190 @@ var
   PreviousTarget: PSDL_Texture;
   TargetGeneration: LongInt;
   Created: Boolean;
+  WindowSize: TPoint;
+  ErrorText, Configuration: UnicodeString;
+  CurrentModeFlags: Cardinal;
 begin
-  InitializeGameVideo;
-  // The browser controls canvas size and fullscreen through CSS and user gestures.
-  if BrowserWindow then
-    Windowed := True;
-  if MobileWindow then
-    Windowed := False;
-  TargetGeneration := GameTargetGeneration;
-  LogicalWidth := Width;
-  LogicalHeight := Height;
-  Created := GameSDLWindow = nil;
-  if Created then
-  begin
-    Flags := SDL_WINDOW_ALLOW_HIGHDPI;
-    if BrowserWindow or MobileWindow then
-      Flags := Flags or SDL_WINDOW_RESIZABLE;
-    GameSDLWindow :=
-        SDL_CreateWindow(
-            'Rangers',
-            SDL_WINDOWPOS_CENTERED,
-            SDL_WINDOWPOS_CENTERED,
-            Width,
-            Height,
-            Flags
-        );
-    if GameSDLWindow = nil then
-      raise Exception.Create(string(SDL_GetError));
-    Flags := SDL_RENDERER_ACCELERATED or SDL_RENDERER_TARGETTEXTURE;
-    if VSync then
-      Flags := Flags or SDL_RENDERER_PRESENTVSYNC;
-    GameSDLRenderer := SDL_CreateRenderer(GameSDLWindow, -1, Flags);
-    if GameSDLRenderer = nil then
-      GameSDLRenderer :=
-          SDL_CreateRenderer(
-              GameSDLWindow,
-              -1,
-              SDL_RENDERER_SOFTWARE or SDL_RENDERER_TARGETTEXTURE
-          );
-    if GameSDLRenderer = nil then
-    begin
-      SDL_DestroyWindow(GameSDLWindow);
-      GameSDLWindow := nil;
-      raise Exception.Create(string(SDL_GetError));
-    end;
-    // Enable UTF-8 commits without calling SDL_StartTextInput on Android: that
-    // API also requests the soft keyboard. The Java overlay opens it directly.
-    if MobileWindow then
-    begin
-      SDL_EventState(SDL_TEXTINPUT, SDL_ENABLE);
-      SDL_EventState(SDL_TEXTEDITING, SDL_ENABLE);
-    end
-    else
-      SDL_StartTextInput;
-  end;
-  // SDL's browser resize handler follows the canvas CSS size. Keep the selected
-  // game resolution in the renderer instead of replacing the canvas dimensions.
-  if not BrowserWindow and not MobileWindow then
-    SDL_SetWindowSize(GameSDLWindow, Width, Height);
-  Flags := 0;
-  if not Windowed then
-    Flags := SDL_WINDOW_FULLSCREEN_DESKTOP;
-  CheckSDL(SDL_SetWindowFullscreen(GameSDLWindow, Flags));
-  // Native raster drawing uses our explicit integer viewport for both input
-  // and presentation, avoiding SDL's separate floor-rounded viewport.
-  PreviousTarget := SDL_GetRenderTarget(GameSDLRenderer);
-  if TargetGeneration <> GameTargetGeneration then
-    PreviousTarget := nil;
-  CheckSDL(SDL_SetRenderTarget(GameSDLRenderer, nil));
+  if VideoFaulted then
+    raise Exception.Create('Video initialization cannot be retried after a native graphics fault');
   try
-    if GameWindowUsesNativeRaster then
-      CheckSDL(SDL_RenderSetLogicalSize(GameSDLRenderer, 0, 0))
-    else
-      CheckSDL(SDL_RenderSetLogicalSize(GameSDLRenderer, Width, Height));
-  finally
-    CheckSDL(SDL_SetRenderTarget(GameSDLRenderer, PreviousTarget));
-  end;
-  CheckSDL(SDL_RenderSetVSync(GameSDLRenderer, Ord(VSync)));
-  SDL_ShowCursor(Ord(CursorCount >= 0));
-  if Created then
-  begin
-    // SDL's Android display mode can precede the first surface dimensions.
-    // Let the game compare Auto again once a real surface exists.
-    HasPendingDisplayChange := GameWindowUsesNativeRaster;
-    // Wayland maps the window only after a buffer is presented. The game waits
-    // for real focus before drawing its loading screen, so supply the first
-    // buffer here to avoid waiting for focus on an invisible surface.
-    CheckSDL(SDL_SetRenderDrawColor(GameSDLRenderer, 0, 0, 0, 255));
-    CheckSDL(SDL_RenderClear(GameSDLRenderer));
-    SDL_RenderPresent(GameSDLRenderer);
+    InitializeGameVideo;
+    // The browser controls canvas size and fullscreen through CSS and user gestures.
+    if BrowserWindow then
+      Windowed := True;
+    if FullscreenOnlyWindow then
+      Windowed := False;
+    Configuration :=
+        Format('Configure window: logical=%dx%d windowed=%s vsync=%s', [Width, Height, BoolToStr(Windowed, True), BoolToStr(VSync, True)]);
+    CurrentModeFlags := 0;
+    if GameSDLWindow <> nil then
+      CurrentModeFlags := SDL_GetWindowFlags(GameSDLWindow) and DiagnosticWindowModeFlags;
+    // Suppress duplicate descriptions only. The configuration calls below must
+    // still run to restore SDL state after drawing, device resets and retries.
+    if (LastVideoLog.Configuration <> Configuration)
+        or (LastVideoLog.Window <> GameSDLWindow)
+        or (LastVideoLog.Renderer <> GameSDLRenderer)
+        or (LastVideoLog.ModeFlags <> CurrentModeFlags) then
+      LogGameVideo(Configuration);
+    TargetGeneration := GameTargetGeneration;
+    LogicalWidth := Width;
+    LogicalHeight := Height;
+    if (GameSDLWindow <> nil) and (GameSDLRenderer = nil) then
+      CloseGameWindow;
+    Created := GameSDLWindow = nil;
+    if Created then
+    begin
+      try
+        WindowSize := Types.Point(Width, Height);
+{$IFDEF SWITCH}
+        WindowSize := GetGameDisplayMetrics.OutputSize;
+{$ENDIF}
+        Flags := SDL_WINDOW_ALLOW_HIGHDPI;
+        if BrowserWindow or FullscreenOnlyWindow then
+          Flags := Flags or SDL_WINDOW_RESIZABLE;
+        LogGameVideo(Format('SDL_CreateWindow(size=%dx%d points, flags=$%s)', [WindowSize.X, WindowSize.Y, IntToHex(Flags, 8)]));
+        GameSDLWindow := SDL_CreateWindow('Rangers', SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WindowSize.X, WindowSize.Y, Flags);
+        if GameSDLWindow = nil then
+          RaiseGameSDLError(Format('SDL_CreateWindow(%dx%d points, flags=$%s)', [WindowSize.X, WindowSize.Y, IntToHex(Flags, 8)]));
+        Flags := SDL_RENDERER_ACCELERATED or SDL_RENDERER_TARGETTEXTURE;
+        if VSync then
+          Flags := Flags or SDL_RENDERER_PRESENTVSYNC;
+        LogGameVideo(Format('SDL_CreateRenderer(accelerated, target textures, vsync=%s)', [BoolToStr(VSync, True)]));
+        GameSDLRenderer := SDL_CreateRenderer(GameSDLWindow, -1, Flags);
+        ErrorText := '';
+        if GameSDLRenderer = nil then
+        begin
+          ErrorText := GameSDLErrorMessage;
+          LogGameMessage(gllWarning, 'video', 'Accelerated renderer unavailable; trying software renderer: ' + ErrorText);
+          LogGameVideo('SDL_CreateRenderer(software, target textures)');
+          GameSDLRenderer := SDL_CreateRenderer(GameSDLWindow, -1, SDL_RENDERER_SOFTWARE or SDL_RENDERER_TARGETTEXTURE);
+        end;
+        if GameSDLRenderer = nil then
+          RaiseGameSDLError('SDL_CreateRenderer(software, target textures); accelerated attempt: ' + ErrorText + '; software attempt');
+        // Enable UTF-8 commits without calling SDL_StartTextInput on Android: that
+        // API also requests the soft keyboard. The Java overlay opens it directly.
+{$IFDEF SWITCH}
+        // Switch SDL suppresses touch/mouse polling while text input is active.
+        // The right-stick button opens the software keyboard explicitly.
+        SDL_StopTextInput;
+{$ELSE}
+        if MobileWindow then
+        begin
+          SDL_EventState(SDL_TEXTINPUT, SDL_ENABLE);
+          SDL_EventState(SDL_TEXTEDITING, SDL_ENABLE);
+        end
+        else
+          SDL_StartTextInput;
+{$ENDIF}
+      except
+        if ExceptObject is Exception then
+          AddGameExceptionContext(Exception(ExceptObject), 'Creating game window and renderer');
+        // Native faults leave driver state unspecified. Do not call it again.
+        if GameExceptionPreventsRecovery(ExceptObject) then
+          raise;
+        // Creation may raise through a native driver instead of returning nil.
+        // Never leave a window that makes the next attempt skip renderer creation.
+        try
+          CloseGameWindow;
+        except
+          LogCurrentGameException('video', 'Secondary failure cleaning up window creation');
+        end;
+        raise;
+      end;
+    end;
+    // SDL's browser resize handler follows the canvas CSS size. Keep the selected
+    // game resolution in the renderer instead of replacing the canvas dimensions.
+    if not BrowserWindow and not FullscreenOnlyWindow then
+      SDL_SetWindowSize(GameSDLWindow, Width, Height);
+    Flags := 0;
+    if not Windowed then
+      Flags := SDL_WINDOW_FULLSCREEN_DESKTOP;
+{$IFNDEF SWITCH}
+    // Switch has one fullscreen surface; desktop fullscreen would force 1080p.
+    CheckGameSDL(SDL_SetWindowFullscreen(GameSDLWindow, Flags), 'SDL_SetWindowFullscreen(flags=' + IntToStr(Flags) + ')');
+{$ENDIF}
+    // Native raster drawing uses our explicit integer viewport for both input
+    // and presentation, avoiding SDL's separate floor-rounded viewport.
+    PreviousTarget := SDL_GetRenderTarget(GameSDLRenderer);
+    if TargetGeneration <> GameTargetGeneration then
+      PreviousTarget := nil;
+    CheckGameSDL(SDL_SetRenderTarget(GameSDLRenderer, nil), 'SDL_SetRenderTarget(window)');
+    try
+      if GameWindowUsesNativeRaster then
+        CheckGameSDL(SDL_RenderSetLogicalSize(GameSDLRenderer, 0, 0), 'SDL_RenderSetLogicalSize(0, 0)')
+      else
+        CheckGameSDL(SDL_RenderSetLogicalSize(GameSDLRenderer, Width, Height), Format('SDL_RenderSetLogicalSize(%d, %d)', [Width, Height]));
+    except
+      // A restoration error is secondary; preserve the configuration failure.
+      try
+        CheckGameSDL(SDL_SetRenderTarget(GameSDLRenderer, PreviousTarget), 'SDL_SetRenderTarget(restore after configuration failure)');
+      except
+        if GameExceptionPreventsRecovery(ExceptObject) then
+          VideoFaulted := True;
+        LogCurrentGameException('video', 'Secondary failure restoring renderer target');
+      end;
+      raise;
+    end;
+    CheckGameSDL(SDL_SetRenderTarget(GameSDLRenderer, PreviousTarget), 'SDL_SetRenderTarget(restore)');
+    CheckGameSDL(SDL_RenderSetVSync(GameSDLRenderer, Ord(VSync)), 'SDL_RenderSetVSync(' + IntToStr(Ord(VSync)) + ')');
+    SDL_ShowCursor(Ord(CursorCount >= 0));
+    if Created then
+    begin
+      // SDL's Android display mode can precede the first surface dimensions.
+      // Let the game compare Auto again once a real surface exists.
+      HasPendingDisplayChange := GameWindowUsesNativeRaster;
+      // Wayland maps the window only after a buffer is presented. The game waits
+      // for real focus before drawing its loading screen, so supply the first
+      // buffer here to avoid waiting for focus on an invisible surface.
+      CheckGameSDL(SDL_SetRenderDrawColor(GameSDLRenderer, 0, 0, 0, 255), 'SDL_SetRenderDrawColor');
+      CheckGameSDL(SDL_RenderClear(GameSDLRenderer), 'SDL_RenderClear');
+      SDL_RenderPresent(GameSDLRenderer);
+    end;
+    LogGameVideoDiagnostics;
+    LastVideoLog.Configuration := Configuration;
+  except
+    if GameExceptionPreventsRecovery(ExceptObject) then
+      VideoFaulted := True;
+    if ExceptObject is Exception then
+      AddGameExceptionContext(Exception(ExceptObject), 'Configuring game window');
+    raise;
   end;
 end;
 
 procedure CloseGameWindow;
+var
+  Renderer: PSDL_Renderer;
+  Window: PSDL_Window;
 begin
-  if GameSDLWindow <> nil then
-    SDL_StopTextInput;
-  SDL_DestroyRenderer(GameSDLRenderer);
-  GameSDLRenderer := nil;
-  SDL_DestroyWindow(GameSDLWindow);
-  GameSDLWindow := nil;
-  TextInput := '';
-  TextPosition := 0;
-  CancelGamePointerInput;
-  TouchMouseActive := False;
-  HasPendingActivation := False;
-  HasPendingDisplayChange := False;
+  try
+    LastVideoLog := Default(TGameVideoLogSnapshot);
+    Renderer := GameSDLRenderer;
+    Window := GameSDLWindow;
+    // Clear ownership before native teardown, which itself may raise.
+    GameSDLRenderer := nil;
+    GameSDLWindow := nil;
+    TextInput := '';
+    TextPosition := 0;
+    CancelGamePointerInput;
+    TouchMouseActive := False;
+    PointerCursorActive := False;
+    HasPendingActivation := False;
+    HasPendingDisplayChange := False;
+    if VideoFaulted then
+      Exit;
+    if Window <> nil then
+      SDL_StopTextInput;
+    if Renderer <> nil then
+      SDL_DestroyRenderer(Renderer);
+    if Window <> nil then
+      SDL_DestroyWindow(Window);
+  except
+    if GameExceptionPreventsRecovery(ExceptObject) then
+      VideoFaulted := True;
+    if ExceptObject is Exception then
+      AddGameExceptionContext(Exception(ExceptObject), 'Closing game window');
+    raise;
+  end;
 end;
 
 function KeyFromScanCode(ScanCode: Integer): Cardinal;
@@ -588,8 +870,6 @@ begin
 end;
 
 function MouseKeys(State: Cardinal): Cardinal;
-var
-  Modifiers: Integer;
 begin
   Result := 0;
   if State and 1 <> 0 then
@@ -598,10 +878,9 @@ begin
     Result := Result or MK_RBUTTON;
   if State and 2 <> 0 then
     Result := Result or MK_MBUTTON;
-  Modifiers := SDL_GetModState;
-  if Modifiers and $3 <> 0 then
+  if GameKeyState(VK_SHIFT) < 0 then
     Result := Result or MK_SHIFT;
-  if Modifiers and $C0 <> 0 then
+  if GameKeyState(VK_CONTROL) < 0 then
     Result := Result or MK_CONTROL;
 end;
 
@@ -653,6 +932,15 @@ var
   end;
 
 begin
+{$IFDEF SWITCH}
+  SwitchPollInput(GameSDLWindow);
+  if HandheldMode <> (SwitchHandheld <> 0) then
+  begin
+    HandheldMode := SwitchHandheld <> 0;
+    HasPendingDisplayChange := True;
+    InterlockedIncrement(GameDisplayGeneration);
+  end;
+{$ENDIF}
   Result := True;
   Message := Default(TGameMessage);
   repeat
@@ -705,8 +993,7 @@ begin
     begin
       if AppInBackground
           or (ArcadeControls and 1 = 0)
-          or (Cardinal(PtrUInt(Event.User.Data2)) and $FFFFFF00
-              <> ArcadeControls and $FFFFFF00) then
+          or (Cardinal(PtrUInt(Event.User.Data2)) and $FFFFFF00 <> ArcadeControls and $FFFFFF00) then
         Continue;
       Message.Message := WM_GAME_ARCADE_INPUT;
       Message.WParam := Cardinal(PtrUInt(Event.User.Data2)) and 3;
@@ -729,12 +1016,7 @@ begin
       // game thread, because SDL's hint storage is not thread-safe.
       if not MobileWindow or (PtrInt(Event.User.Data1) <= 0) then
         Continue;
-      TouchSlop :=
-          EnsureRange(
-              Round(TouchSlop * (PtrInt(Event.User.Data1) / 160.0) / MobileDensity),
-              1,
-              256
-          );
+      TouchSlop := EnsureRange(Round(TouchSlop * (PtrInt(Event.User.Data1) / 160.0) / MobileDensity), 1, 256);
       MobileDensity := PtrInt(Event.User.Data1) / 160.0;
       InterlockedIncrement(GameDisplayGeneration);
       Message.Message := WM_GAME_DISPLAY_CHANGED;
@@ -752,8 +1034,7 @@ begin
       // Touch-to-mouse synthesis is disabled, so SDL's mouse position is stale.
       GetGameMouse(Point);
       Message.Message := WM_MOUSEWHEEL;
-      Message.WParam :=
-          MouseKeys(SDL_GetMouseState(nil, nil)) or (Cardinal(Word(Step * WHEEL_DELTA)) shl 16);
+      Message.WParam := MouseKeys(GameMouseState(nil, nil)) or (Cardinal(Word(Step * WHEEL_DELTA)) shl 16);
       Message.LParam := PackGamePoint(Point.X, Point.Y);
       Exit;
     end;
@@ -827,7 +1108,7 @@ begin
             RefreshGameCursor;
             GetGameMouse(Point);
             Message.Message := WM_MOUSEMOVE;
-            Message.WParam := MouseKeys(SDL_GetMouseState(nil, nil));
+            Message.WParam := MouseKeys(GameMouseState(nil, nil));
             Message.LParam := PackGamePoint(Point.X, Point.Y);
             Exit;
           end;
@@ -860,8 +1141,10 @@ begin
         if Event.Motion.Which = SDL_TOUCH_MOUSEID then
           Continue;
         TouchMouseActive := False;
+        if (Event.Motion.XRel <> 0) or (Event.Motion.YRel <> 0) then
+          PointerCursorActive := True;
         Message.Message := WM_MOUSEMOVE;
-        Message.WParam := MouseKeys(Event.Motion.State);
+        Message.WParam := MouseKeys(CombinedMouseState(Event.Motion.State));
         Point := Types.Point(Event.Motion.X, Event.Motion.Y);
         if GameWindowUsesNativeRaster then
           Point := WindowPoint(Point.X, Point.Y);
@@ -873,6 +1156,7 @@ begin
         if Event.Button.Which = SDL_TOUCH_MOUSEID then
           Continue;
         TouchMouseActive := False;
+        PointerCursorActive := True;
         case Event.Button.Button of
           1: Message.Message := WM_LBUTTONDOWN;
           2: Message.Message := WM_MBUTTONDOWN;
@@ -884,7 +1168,7 @@ begin
           Inc(Message.Message)
         else if Event.Button.Clicks = 2 then
           Inc(Message.Message, 2);
-        Message.WParam := MouseKeys(SDL_GetMouseState(nil, nil));
+        Message.WParam := MouseKeys(GameMouseState(nil, nil));
         Point := Types.Point(Event.Button.X, Event.Button.Y);
         if GameWindowUsesNativeRaster then
           Point := WindowPoint(Point.X, Point.Y);
@@ -901,7 +1185,7 @@ begin
         // SDL already applied the user's natural-scroll preference.
         WheelRemainder := WheelRemainder + Amount;
         WheelMessage.Message := WM_MOUSEWHEEL;
-        WheelMessage.WParam := MouseKeys(SDL_GetMouseState(@X, @Y));
+        WheelMessage.WParam := MouseKeys(GameMouseState(@X, @Y));
         Point := Types.Point(Event.Wheel.MouseX, Event.Wheel.MouseY);
         if GameWindowUsesNativeRaster then
           Point := WindowPoint(Point.X, Point.Y);
@@ -925,8 +1209,7 @@ begin
           // With SDL's logical-size transform disabled, fingers are normalized
           // to the complete output. Use exactly the integer destination used by
           // presentation, including any intentional aspect-ratio letterbox.
-          Presentation :=
-              CalculateGamePresentation(GetGameDisplayMetrics, LogicalWidth, LogicalHeight);
+          Presentation := CalculateGamePresentation(GetGameDisplayMetrics, LogicalWidth, LogicalHeight);
           Presentation.OutputToLogical(
               Event.Finger.X * Presentation.Metrics.OutputSize.X,
               Event.Finger.Y * Presentation.Metrics.OutputSize.Y,
@@ -946,16 +1229,19 @@ begin
         // their move/up events so dragging out of the view still releases it.
         // SDL clamps desktop/browser letterbox contacts to the normalized edge;
         // their original position is lost. Do not turn those into edge clicks.
-        if (Phase = tpDown)
-            and not GameWindowUsesNativeRaster
-            and ((FingerX <= 0) or (FingerY <= 0)) then
+        if (Phase = tpDown) and not GameWindowUsesNativeRaster and ((FingerX <= 0) or (FingerY <= 0)) then
           Continue;
-        if (Phase = tpDown)
-            and ((FingerX < 0)
-                or (FingerX >= LogicalWidth)
-                or (FingerY < 0)
-                or (FingerY >= LogicalHeight)) then
+        if (Phase = tpDown) and ((FingerX < 0) or (FingerX >= LogicalWidth) or (FingerY < 0) or (FingerY >= LogicalHeight)) then
           Continue;
+        PointerCursorActive := False;
+{$IFDEF SWITCH}
+        // Resume stick control from the last touch, without generating a
+        // synthetic mouse event that would reveal the cursor again.
+        SwitchTouchPosition(
+            Round(Event.Finger.X * Presentation.Metrics.WindowSize.X),
+            Round(Event.Finger.Y * Presentation.Metrics.WindowSize.Y)
+        );
+{$ENDIF}
         Touch.Feed(
             Phase,
             Event.Finger.TouchID,
@@ -994,15 +1280,15 @@ end;
 
 function GameWindowFocused: Boolean;
 begin
-  Result :=
-      (GameSDLWindow <> nil)
-          and not AppInBackground
-          and (SDL_GetWindowFlags(GameSDLWindow) and SDL_WINDOW_INPUT_FOCUS <> 0);
+  Result := (GameSDLWindow <> nil) and not AppInBackground and (SDL_GetWindowFlags(GameSDLWindow) and SDL_WINDOW_INPUT_FOCUS <> 0);
 end;
 
 function GameKeyState(Key: Integer): SmallInt;
 var
   Keys: PByte;
+{$IFDEF SWITCH}
+  ControllerKeys: PByte;
+{$ENDIF}
   Count, Index, Mask: Integer;
 begin
   Result := 0;
@@ -1015,13 +1301,21 @@ begin
       Mask := 4
     else if Key = 4 then
       Mask := 2;
-    if SDL_GetMouseState(nil, nil) and Cardinal(Mask) <> 0 then
+    if GameMouseState(nil, nil) and Cardinal(Mask) <> 0 then
       Result := -32768;
     Exit;
   end;
   Keys := SDL_GetKeyboardState(@Count);
+{$IFDEF SWITCH}
+  ControllerKeys := SwitchKeyboardState;
+{$ENDIF}
   for Index := 0 to Count - 1 do
-    if (Keys[Index] <> 0) and (KeyFromScanCode(Index) = Cardinal(Key)) then
+    if ((Keys[Index] <> 0)
+{$IFDEF SWITCH}
+            or (ControllerKeys[Index] <> 0)
+{$ENDIF}
+        )
+        and (KeyFromScanCode(Index) = Cardinal(Key)) then
       Exit(-32768);
 end;
 
@@ -1062,7 +1356,7 @@ begin
     Exit;
   end
   else
-    SDL_GetMouseState(@X, @Y);
+    GameMouseState(@X, @Y);
   if GameSDLRenderer = nil then
   begin
     Point := Types.Point(X, Y);
@@ -1080,7 +1374,7 @@ function GamePointerAllowsEdgeScroll: Boolean;
 begin
   // Android uses explicit panning, including when a mouse is connected.
   // Elsewhere, a released finger must not act as a parked desktop cursor.
-  Result := not GameWindowIsMobile and not TouchMouseActive;
+  Result := not GameWindowIsMobile and GamePointerCursorVisible and not TouchMouseActive;
 end;
 
 procedure WarpGameMouse(X, Y: Integer);
@@ -1128,7 +1422,7 @@ begin
   SDL_MinimizeWindow(GameSDLWindow);
 end;
 
-procedure OpenGameURL(const URL: UnicodeString);
+function OpenGameURL(const URL: UnicodeString): Boolean;
 var
   Target: UTF8String;
 begin
@@ -1137,7 +1431,9 @@ begin
   Target := UTF8Encode(URL);
   if Pos('://', Target) = 0 then
     Target := FilenameToURI(UTF8Encode(ExpandFileName(NativeGamePath(URL))));
-  CheckSDL(SDL_OpenURL(PAnsiChar(Target)));
+  // Opening an external document is optional platform functionality. Failure
+  // must not unwind the current game session (Switch has no URL handler).
+  Result := SDL_OpenURL(PAnsiChar(Target)) = 0;
 end;
 
 function GetGameClipboard: UnicodeString;
@@ -1154,7 +1450,7 @@ end;
 
 procedure SetGameClipboard(const Text: UnicodeString);
 begin
-  CheckSDL(SDL_SetClipboardText(PAnsiChar(UTF8Encode(Text))));
+  CheckGameSDL(SDL_SetClipboardText(PAnsiChar(UTF8Encode(Text))), 'SDL_SetClipboardText');
 end;
 
 procedure DiscardGameTextCharacter;
@@ -1232,24 +1528,30 @@ begin
     Buttons[1].Text := 'No';
   end;
   Data.Buttons := @Buttons;
-  CheckSDL(SDL_ShowMessageBox(Data, Result));
+  CheckGameSDL(SDL_ShowMessageBox(Data, Result), 'SDL_ShowMessageBox');
   if Result < 0 then
     Result := Buttons[Data.ButtonCount - 1].ID;
 end;
 
 procedure ShowGameDialog(const Text: UnicodeString);
 begin
-  CheckSDL(
-      SDL_ShowSimpleMessageBox($10, 'Space Rangers', PAnsiChar(UTF8Encode(Text)), GameSDLWindow)
-  );
+  CheckGameSDL(SDL_ShowSimpleMessageBox($10, 'Space Rangers', PAnsiChar(UTF8Encode(Text)), GameSDLWindow), 'SDL_ShowSimpleMessageBox');
 end;
 
 finalization
-  CloseGameWindow;
+  try
+    CloseGameWindow;
+  except
+    LogCurrentGameException('video', 'Closing game window during shutdown');
+  end;
   FreeAndNil(Touch);
-  if VideoInitialized then
+  if VideoInitialized and not VideoFaulted then
   begin
-    SDL_DelEventWatch(WatchRendererReset, nil);
-    SDL_QuitSubSystem(SDL_INIT_VIDEO or SDL_INIT_TIMER);
+    try
+      SDL_DelEventWatch(WatchRendererReset, nil);
+      SDL_QuitSubSystem(SDL_INIT_VIDEO or SDL_INIT_TIMER);
+    except
+      LogCurrentGameException('video', 'Shutting down SDL video');
+    end;
   end;
 end.

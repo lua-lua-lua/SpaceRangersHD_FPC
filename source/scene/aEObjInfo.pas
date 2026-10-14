@@ -138,6 +138,7 @@ type
 implementation
 
 uses
+  GameDiagnostics,
   Classes,
   SysUtils,
   aPlanet,
@@ -176,9 +177,6 @@ begin
 end;
 
 procedure TEObjInfo.LoadFromStar(Star: TStar);
-const
-  NoDamageFlags = [dkEnergy..dkDroidBlock] - [dkEnergy..dkDroidBlock];
-  WearableItemTypes = [0..79] - [0..7, 9, 23..25, 35..38, 42, 69..72, 74..79];
 var
   Index, StatusCount: Integer;
   Planet: TPlanet;
@@ -228,11 +226,7 @@ begin
         Ships[Index].FullName := WrapTextInColor(Ship.GetFullName(' '), InfoNameColorTag);
         if (Ship <> nil) and (GetPlayer = Ship.PartnerShip) then
           Ships[Index].FullName :=
-              Ships[Index].FullName
-                  + #13#10
-                  + WrapTextInColor(
-                      LookupLocalizedTextByKey('FormInfo.Partner'),
-                      TextHighlightColorTag);
+              Ships[Index].FullName + #13#10 + WrapTextInColor(LookupLocalizedTextByKey('FormInfo.Partner'), TextHighlightColorTag);
         if (Ship is TKling)
             and ((Ship as TKling).ActiveProgramAppliedTurn > 0)
             and ((Ship as TKling).ActiveProgramId in [prgShipwreck..prgDisconnection]) then
@@ -240,11 +234,7 @@ begin
               Ships[Index].FullName
                   + #13#10
                   + WrapTextInColor(
-                      LocalizedText(
-                          'Programms.'
-                              + ProgramNames[(Ship as TKling).ActiveProgramId]
-                              + '.AddToShipInfo'
-                      ),
+                      LocalizedText('Programms.' + ProgramNames[(Ship as TKling).ActiveProgramId] + '.AddToShipInfo'),
                       RedColorTag);
       end
       else
@@ -263,7 +253,7 @@ begin
       Ships[Index].Speed := Ship.CalculateSpeed;
       Ships[Index].HullCapacity := Ship.GetHull.Weight;
       Ships[Index].HullPoints := Ship.GetHull.HullPoints;
-      Ships[Index].HullFragility := Ship.GetHull.GetFragilityFactor(NoDamageFlags);
+      Ships[Index].HullFragility := Ship.GetHull.GetFragilityFactor([]);
       if GetPlayer.CanResolveObjectWithScanner(Ship) or (GetPlayer = Ship) then
         Ships[Index].ScannerResolved := True
       else
@@ -278,8 +268,7 @@ begin
           or (Ship.TypeId = stTranclucator) then
       begin
         Stage := 25;
-        Ships[Index].DefenseText :=
-            Ships[Index].DefenseText + ' + ' + WrapTextInColor(IntToStr(Ship.GetArmor), '');
+        Ships[Index].DefenseText := Ships[Index].DefenseText + ' + ' + WrapTextInColor(IntToStr(Ship.GetArmor), '');
         if GetPlayer.HasScannerArtefact(Ship) then
         begin
           if Ship.GetRepairRobot <> nil then
@@ -300,10 +289,7 @@ begin
           if Ship.RangerRelations <> nil then
             if Ship.RangerRelations.Count > 0 then
             begin
-              Relation :=
-                  RelationValueToLevel(
-                      Byte(Ship.RangerRelations[Galaxy.Rangers.IndexOf(GetPlayer)])
-                  );
+              Relation := RelationValueToLevel(Byte(Ship.RangerRelations[Galaxy.Rangers.IndexOf(GetPlayer)]));
               if Relation <> rlHostile then
                 Ships[Index].Relation := Relation;
             end;
@@ -335,10 +321,10 @@ begin
       Items[Index].ItemType := Item.ItemType;
       Items[Index].Weight := Item.Weight;
       Items[Index].Cost := Item.Cost;
-      if Byte(Item.ItemType) in WearableItemTypes then
+      if Item.ItemType in RepairableItemTypes then
       begin
         Items[Index].ConditionPercent := (Item as TEquipment).ConditionPercent;
-        Items[Index].Fragility := (Item as TEquipment).GetFragilityFactor(NoDamageFlags);
+        Items[Index].Fragility := (Item as TEquipment).GetFragilityFactor([]);
       end
       else
       begin
@@ -349,10 +335,8 @@ begin
       begin
         Stage := 31;
         Items[Index].ImagePath := 'GI,' + GetItemTypeBitmapPath(Item.ItemType);
-        Items[Index].Name :=
-            WrapTextInColor(GoodsMarket[Byte(Item.ItemType)].DisplayName, InfoNameColorTag);
-        Items[Index].InfoText :=
-            LocalizedText('Items.Goods.Text.' + IntToStr(Byte(Item.ItemType) + 1));
+        Items[Index].Name := WrapTextInColor(GoodsMarket[Ord(Item.ItemType)].DisplayName, InfoNameColorTag);
+        Items[Index].InfoText := LocalizedText('Items.Goods.Text.' + IntToStr(Ord(Item.ItemType) + 1));
         Items[Index].OwnerId := oiUninhabited;
       end
       else
@@ -392,7 +376,7 @@ begin
     SetLength(CustomSystemInfos, Star.CustomSystemInfos.Count);
     for Index := 0 to Star.CustomSystemInfos.Count - 1 do
     begin
-      CustomInfo := TCustomSystemInfo(Star.CustomSystemInfos[Index]);
+      CustomInfo := Star.CustomSystemInfos[Index];
       CustomSystemInfos[Index].Name := CustomInfo.Name;
       CustomSystemInfos[Index].ImagePath := CustomInfo.Icon;
       CustomSystemInfos[Index].Text := CustomInfo.Info;
@@ -401,9 +385,8 @@ begin
   except
     on E: Exception do
     begin
-      AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
-      raise Exception.Create(
-          'Error in procedure TEObjInfo.LoadFromStar, label = ' + IntToStr(Stage));
+      AddGameExceptionContext(E, 'TEObjInfo.LoadFromStar; stage=' + IntToStr(Stage));
+      raise;
     end;
   end;
 end;

@@ -18,8 +18,7 @@ var
 
   AutoSaveFileName: WideString = 'AutoSave.sav';
 
-  QuickSaveFileNames: array[1..3] of WideString =
-      ('QuickSave.sav', 'QuickSave2.sav', 'QuickSave3.sav');
+  QuickSaveFileNames: array[1..3] of WideString = ('QuickSave.sav', 'QuickSave2.sav', 'QuickSave3.sav');
 
   TurnSaveFileName: WideString = 'TurnSave.sav';
 
@@ -92,6 +91,8 @@ type
 implementation
 
 uses
+  GameDiagnostics,
+  GameEvents,
   GI_MessageBox,
   GR_DX,
   aGalaxyStruct,
@@ -145,22 +146,16 @@ end;
 procedure TfSaveManager.InitializeLayout;
 begin
   inherited;
-  AppendLogTextThreadSafe('fSaveManager... ');
+  LogGameMessage(gllDebug, 'ui', 'Initializing layout fSaveManager');
   ViewportRect := Classes.Rect(0, 0, GameScreenWidth, GameScreenHeight);
   GetByName('').SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
   GetByName('BGBuf').SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
   with GetByName('ButClose').Parent do
-    SetPosition(
-        Classes.Point(
-            LocalPosition.X + ExtraScreenWidth div 2,
-            LocalPosition.Y + ExtraScreenHeight div 2
-        )
-    );
+    SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + ExtraScreenHeight div 2));
   NewSaveNormalColor := GetStyleColorGI('SaveManager.NewSaveNormal', 0, 41, 65);
   NewSaveSelectedColor := GetStyleColorGI('SaveManager.NewSaveSelected', 87, 149, 175);
   SaveSlotNormalColor := GetStyleColorGI('SaveManager.SlotNormal', 97, 129, 143);
   SaveSlotSelectedColor := GetStyleColorGI('SaveManager.SlotSelected', 65, 121, 145);
-  AppendLogLineThreadSafe('ok');
 end;
 
 procedure TfSaveManager.OnOpen;
@@ -450,6 +445,7 @@ end;
 procedure TfSaveManager.RefreshSlot(SlotIndex: Integer; UnusedEditingFlag: Boolean);
 var
   State: WideString;
+  FailureContext: UnicodeString;
   Color: Cardinal;
 begin
   try
@@ -472,12 +468,7 @@ begin
         SetText(LocalizedText('FormSaveManager.New'))
       else
       begin
-        SetText(
-            FormatDateTime(
-                AnsiString(LocalizedText('FormSaveManager.DateFormatStr')),
-                PSMSlot(Slots[SlotIndex]).LocalWriteTime
-            )
-        );
+        SetText(FormatDateTime(AnsiString(LocalizedText('FormSaveManager.DateFormatStr')), PSMSlot(Slots[SlotIndex]).LocalWriteTime));
       end;
       if (SaveManagerMode = smmSave) and (SlotIndex = 0) then
       begin
@@ -519,10 +510,8 @@ begin
       if SelectedSlot = SlotIndex then
       begin
         (GetByName('Slot' + IntToStr(SlotIndex) + 'Captain') as TLabelGI).SetText(GetPlayer.Name);
-        (GetByName('Slot' + IntToStr(SlotIndex) + 'Turn') as TLabelGI)
-            .SetText(FormatGameTurnDate(Galaxy.CurrentTurn));
-        (GetByName('Slot' + IntToStr(SlotIndex) + 'Money') as TLabelGI)
-            .SetText(IntToStr(GetPlayer.Money));
+        (GetByName('Slot' + IntToStr(SlotIndex) + 'Turn') as TLabelGI).SetText(FormatGameTurnDate(Galaxy.CurrentTurn));
+        (GetByName('Slot' + IntToStr(SlotIndex) + 'Money') as TLabelGI).SetText(IntToStr(GetPlayer.Money));
       end
       else
       begin
@@ -533,23 +522,17 @@ begin
     end
     else
     begin
-      (GetByName('Slot' + IntToStr(SlotIndex) + 'Captain') as TLabelGI)
-          .SetText(PSMSlot(Slots[SlotIndex]).PilotName);
-      (GetByName('Slot' + IntToStr(SlotIndex) + 'Turn') as TLabelGI)
-          .SetText(FormatGameTurnDate(PSMSlot(Slots[SlotIndex]).Turn));
-      (GetByName('Slot' + IntToStr(SlotIndex) + 'Money') as TLabelGI)
-          .SetText(IntToStr(PSMSlot(Slots[SlotIndex]).Money));
+      (GetByName('Slot' + IntToStr(SlotIndex) + 'Captain') as TLabelGI).SetText(PSMSlot(Slots[SlotIndex]).PilotName);
+      (GetByName('Slot' + IntToStr(SlotIndex) + 'Turn') as TLabelGI).SetText(FormatGameTurnDate(PSMSlot(Slots[SlotIndex]).Turn));
+      (GetByName('Slot' + IntToStr(SlotIndex) + 'Money') as TLabelGI).SetText(IntToStr(PSMSlot(Slots[SlotIndex]).Money));
     end;
   except
     on E: Exception do
     begin
-      AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
-      AppendLogLineThreadSafe(
-          AnsiString(
-              WideString('Error when loading info from save file ')
-                  + PSMSlot(Slots[SlotIndex]).FileName
-          )
-      );
+      FailureContext := 'refreshing save slot ' + IntToStr(SlotIndex);
+      if (Slots <> nil) and (SlotIndex >= 0) and (SlotIndex < Slots.Count) and (PSMSlot(Slots[SlotIndex]) <> nil) then
+        FailureContext := FailureContext + '; file=' + PSMSlot(Slots[SlotIndex]).FileName;
+      LogCurrentGameException('save', FailureContext, gllWarning);
     end;
   end;
 end;
@@ -567,9 +550,7 @@ begin
   MainMenuScreen.LoadPanel.SelectBackgroundStyle(0);
   if SelectedSlot >= 0 then
   begin
-    if not IsSlotEmpty(SelectedSlot)
-        and (ReadSaveVersion(PSMSlot(Slots[SelectedSlot]).FileName)
-            < MinimumLoadableSaveVersion) then
+    if not IsSlotEmpty(SelectedSlot) and (ReadSaveVersion(PSMSlot(Slots[SelectedSlot]).FileName) < MinimumLoadableSaveVersion) then
       ShowMessageBoxGI(
           TMessageLoopGI(GetRegisteredScreenLoop(CurrentScreenId)),
           LanguageDataConfig.GetParamByPathOrMarker('FormSaveManager.LoadError'),
@@ -580,15 +561,11 @@ begin
       PendingLoadFileName := PSMSlot(Slots[SelectedSlot]).FileName;
       EditableSaveFileName := GetSaveConfigPath(PendingLoadFileName);
       if SysUtils.FileExists(NativeGamePath(EditableSaveFileName)) then
-        if ShowMessageBoxGI(
-                Self,
-                LocalizedColorText('FormSaveManager.LoadDumpConfirm'),
-                mbgOK or mbgCancel or mbgQuestion)
+        if ShowMessageBoxGI(Self, LocalizedColorText('FormSaveManager.LoadDumpConfirm'), mbgOK or mbgCancel or mbgQuestion)
             = mbgResultOK then
         begin
           EditableSaveBlock.Clear;
-          EditableSaveBlock
-              .LoadFromTextFileWithEncodingProbe(PWideChar(EditableSaveFileName), True);
+          EditableSaveBlock.LoadFromTextFileWithEncodingProbe(PWideChar(EditableSaveFileName), True);
           ApplyEditableSaveOnLoad := True;
         end;
       ShipScreen.SelectedHoldKind := phkEmpty;
@@ -612,8 +589,7 @@ begin
       SysUtils.DeleteFile(NativeGamePath(AnsiString(PSMSlot(Slots[SelectedSlot]).FileName)));
       PSMSlot(Slots[SelectedSlot]).FileName := '';
     end;
-    FileName :=
-        TrimWideString((GetByName('Slot' + IntToStr(SelectedSlot) + 'Edit') as TEditGI).Text);
+    FileName := TrimWideString((GetByName('Slot' + IntToStr(SelectedSlot) + 'Edit') as TEditGI).Text);
     if FileName = '' then
       SetFocusedControl(GetByName('Slot' + IntToStr(SelectedSlot) + 'Edit'))
     else
@@ -622,22 +598,14 @@ begin
       FileName := RemoveWideStringChars(FileName, '<>"/\:');
       if RunningUnderWine
           or ((UserSettingsConfig.CountParams('TransliterateSaveNames') > 0)
-              and ParseEnabledNameGI(
-                  TrimWideString(
-                      UserSettingsConfig.GetParamByPathOrMarker('TransliterateSaveNames')
-                  ))) then
+              and ParseEnabledNameGI(TrimWideString(UserSettingsConfig.GetParamByPathOrMarker('TransliterateSaveNames')))) then
         FileName := TransliterateCyrillicToLatin(FileName);
-      FileName :=
-          BuildUniqueSavePath(GetGameUserDirectory + 'Save\' + FileName + '.sav', SuffixIndex);
+      FileName := BuildUniqueSavePath(GetGameUserDirectory + 'Save\' + FileName + '.sav', SuffixIndex);
       if SuffixIndex > 0 then
         Description := Description + ' (' + IntToStr(SuffixIndex) + ')';
       Saved := SaveGameToFile(FileName, Description);
       if not Saved then
-        ShowMessageBoxGI(
-            Self,
-            LanguageDataConfig.GetParamByPathOrMarker('FormSaveManager.SaveError'),
-            mbgOK or mbgError
-        );
+        ShowMessageBoxGI(Self, LanguageDataConfig.GetParamByPathOrMarker('FormSaveManager.SaveError'), mbgOK or mbgError);
       CloseClicked(Sender);
     end;
   end;
@@ -648,10 +616,7 @@ var
   WasAutoSave: Boolean;
 begin
   if (SelectedSlot >= 0) and not IsSlotEmpty(SelectedSlot) then
-    if ShowMessageBoxGI(
-            Self,
-            LanguageDataConfig.GetParamByPathOrMarker('FormSaveManager.QueryDelete'),
-            mbgOK or mbgCancel or mbgQuestion)
+    if ShowMessageBoxGI(Self, LanguageDataConfig.GetParamByPathOrMarker('FormSaveManager.QueryDelete'), mbgOK or mbgCancel or mbgQuestion)
         = mbgResultOK then
     begin
       if (FindAutoSaveSlot = SelectedSlot) and (SaveManagerMode = smmLoad) then
@@ -659,11 +624,8 @@ begin
       else
         WasAutoSave := False;
       SysUtils.DeleteFile(NativeGamePath(AnsiString(PSMSlot(Slots[SelectedSlot]).FileName)));
-      if SysUtils.FileExists(
-          NativeGamePath(GetSaveConfigPath(PSMSlot(Slots[SelectedSlot]).FileName))) then
-        SysUtils.DeleteFile(
-            NativeGamePath(AnsiString(GetSaveConfigPath(PSMSlot(Slots[SelectedSlot]).FileName)))
-        );
+      if SysUtils.FileExists(NativeGamePath(GetSaveConfigPath(PSMSlot(Slots[SelectedSlot]).FileName))) then
+        SysUtils.DeleteFile(NativeGamePath(AnsiString(GetSaveConfigPath(PSMSlot(Slots[SelectedSlot]).FileName))));
       if WasAutoSave then
         SelectedSlot := 0;
       RebuildSlotControls;
@@ -693,12 +655,9 @@ begin
   begin
     if SelectedSlot < 0 then
       SelectSlot(0)
-    else if ((SaveManagerMode = smmLoad) or (FindAutoSaveSlot < 0))
-        and (Slots.Count - 1 <= SelectedSlot) then
+    else if ((SaveManagerMode = smmLoad) or (FindAutoSaveSlot < 0)) and (Slots.Count - 1 <= SelectedSlot) then
       SelectSlot(0)
-    else if (SaveManagerMode <> smmLoad)
-        and (FindAutoSaveSlot >= 0)
-        and (Slots.Count - 2 <= SelectedSlot) then
+    else if (SaveManagerMode <> smmLoad) and (FindAutoSaveSlot >= 0) and (Slots.Count - 2 <= SelectedSlot) then
       SelectSlot(0)
     else
       SelectSlot(SelectedSlot + 1);
@@ -780,8 +739,7 @@ begin
     SelectedSlot := -1;
   (GetByName('ButDelete') as TGraphButtonGI).SetDisabled(IsSlotEmpty(SlotIndex));
   (GetByName('ButLoad') as TGraphButtonGI).SetDisabled(IsSlotEmpty(SlotIndex));
-  (GetByName('ButSave') as TGraphButtonGI)
-      .SetDisabled((SlotIndex < 0) or (Slots.Count <= SlotIndex));
+  (GetByName('ButSave') as TGraphButtonGI).SetDisabled((SlotIndex < 0) or (Slots.Count <= SlotIndex));
   if (SelectedSlot >= 0) and (Slots.Count > SelectedSlot) then
   begin
     ScrollPanel := GetByName('PanelSlot') as TPanelScrollBarGI;
@@ -810,16 +768,8 @@ begin
       with GetByName('GameImage') as TGraphBufGI do
       begin
         GraphBuf.Clear;
-        GraphBuf.AllocateRgb(
-            SavePreviewGraph.Width,
-            SavePreviewGraph.Height,
-            SavePreviewGraph.PitchBytes
-        );
-        System.Move(
-            Pointer(SavePreviewGraph.GetPixels)^,
-            Pointer(GraphBuf.GetPixels)^,
-            GraphBuf.Height * GraphBuf.PitchBytes
-        );
+        GraphBuf.AllocateRgb(SavePreviewGraph.Width, SavePreviewGraph.Height, SavePreviewGraph.PitchBytes);
+        System.Move(Pointer(SavePreviewGraph.GetPixels)^, Pointer(GraphBuf.GetPixels)^, GraphBuf.Height * GraphBuf.PitchBytes);
         GraphBuf.RescaleRgb(ClientSize.X, ClientSize.Y);
         GraphBuf.ConvertRgbTo565;
         Invalidate;
@@ -828,16 +778,8 @@ begin
       with GetByName('GameImage2') as TGraphBufGI do
       begin
         GraphBuf.Clear;
-        GraphBuf.AllocateRgb(
-            SecondarySavePreviewGraph.Width,
-            SecondarySavePreviewGraph.Height,
-            SecondarySavePreviewGraph.PitchBytes
-        );
-        System.Move(
-            Pointer(SecondarySavePreviewGraph.GetPixels)^,
-            Pointer(GraphBuf.GetPixels)^,
-            GraphBuf.Height * GraphBuf.PitchBytes
-        );
+        GraphBuf.AllocateRgb(SecondarySavePreviewGraph.Width, SecondarySavePreviewGraph.Height, SecondarySavePreviewGraph.PitchBytes);
+        System.Move(Pointer(SecondarySavePreviewGraph.GetPixels)^, Pointer(GraphBuf.GetPixels)^, GraphBuf.Height * GraphBuf.PitchBytes);
         GraphBuf.RescaleRgb(ClientSize.X, ClientSize.Y);
         GraphBuf.ConvertRgbTo565;
         Invalidate;
@@ -952,22 +894,17 @@ begin
     else if GetPlayer.RuinsSavedDockedTo <> nil then
     begin
       Result := LocalizedText('FormSaveManager.SaveInShip');
-      Result :=
-          ReplaceAllWideString(Result, '<ShipName>', GetPlayer.RuinsSavedDockedTo.GetFullName(' '));
+      Result := ReplaceAllWideString(Result, '<ShipName>', GetPlayer.RuinsSavedDockedTo.GetFullName(' '));
     end
     else
       Result := LocalizedText('FormSaveManager.SaveInSpace');
   end;
   Result := ReplaceAllWideString(Result, '<Star>', GetPlayer.CurrentStar.Name);
-  Result :=
-      ReplaceAllWideString(Result, '<Constellation>', GetPlayer.CurrentStar.Constellation.GetName);
+  Result := ReplaceAllWideString(Result, '<Constellation>', GetPlayer.CurrentStar.Constellation.GetName);
   Result := ReplaceAllWideString(Result, '<Player>', GetPlayer.Name);
 end;
 
-function TfSaveManager.BuildUniqueSavePath(
-    const FileName: WideString;
-    out SuffixIndex: Integer
-): WideString;
+function TfSaveManager.BuildUniqueSavePath(const FileName: WideString; out SuffixIndex: Integer): WideString;
 var
   I, ExistingSuffix, Parts: Integer;
   Directory, BaseName, Extension, ExistingName, Suffix: WideString;
@@ -990,8 +927,7 @@ begin
   I := 0;
   while I < Slots.Count do
   begin
-    ExistingName :=
-        TrimWideString(LowerCaseWideString(ExtractFileNameNoExtW(PSMSlot(Slots[I]).FileName)));
+    ExistingName := TrimWideString(LowerCaseWideString(ExtractFileNameNoExtW(PSMSlot(Slots[I]).FileName)));
     Parts := CountDelimitedPartsW(ExistingName, '()');
     ExistingSuffix := 0;
     if Parts >= 3 then
@@ -1016,14 +952,7 @@ begin
     begin
       Suffix := ExtractDelimitedPartW(BaseName, Parts - 2, '()');
       if IsIntegerTextW(Suffix) then
-        Result :=
-            Directory
-                + '\'
-                + ExtractDelimitedRangeW(BaseName, 0, Parts - 3, '()')
-                + ' ('
-                + IntToStr(SuffixIndex)
-                + ').'
-                + Extension
+        Result := Directory + '\' + ExtractDelimitedRangeW(BaseName, 0, Parts - 3, '()') + ' (' + IntToStr(SuffixIndex) + ').' + Extension
       else
         Result := Directory + '\' + BaseName + ' (' + IntToStr(SuffixIndex) + ').' + Extension;
     end
@@ -1148,9 +1077,7 @@ begin
   begin
     New(NewSlot);
     if GetPlayer.OwnerId = oiPirate then
-      NewSlot.RaceName :=
-          OwnerInfo[oiPirate].InternalName
-              + OwnerInfo[RaceToOwner(GetPlayer.PilotRace)].InternalName
+      NewSlot.RaceName := OwnerInfo[oiPirate].InternalName + OwnerInfo[RaceToOwner(GetPlayer.PilotRace)].InternalName
     else
       NewSlot.RaceName := OwnerInfo[GetPlayer.OwnerId].InternalName;
   end;
@@ -1160,12 +1087,10 @@ begin
     if SysUtils.FindFirst('*', faAnyFile, FindData) = 0 then
     begin
       repeat
-        if ((FindData.Attr and faDirectory) = 0)
-            and SameText(ExtractFileExt(FindData.Name), '.sav') then
+        if ((FindData.Attr and faDirectory) = 0) and SameText(ExtractFileExt(FindData.Name), '.sav') then
         begin
           New(Slot);
-          Slot.FileName :=
-              GetGameUserDirectory + 'Save\' + TrimWideString(WideString(FindData.Name));
+          Slot.FileName := GetGameUserDirectory + 'Save\' + TrimWideString(WideString(FindData.Name));
           if LowerCaseWideString(Slot.FileName) = LowerCaseWideString(GetAutoSavePath) then
             Slot.FileName := AutoPath;
           Slot.DisplayName := ExtractFileNameNoExtW(Slot.FileName);

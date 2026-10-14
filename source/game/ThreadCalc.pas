@@ -56,6 +56,7 @@ uses
   aCalc,
   Types,
   GameSystem,
+  GameDiagnostics,
   SysUtils,
   Math,
   Globals,
@@ -114,8 +115,7 @@ begin
     Stage := 1;
     RecordFilm :=
         GetPlayer.InNormalSpace
-            or ((GetPlayer.Order = soTakeoff)
-                and ((GetPlayer.CurrentPlanet <> nil) or (GetPlayer.DockedTo <> nil)))
+            or ((GetPlayer.Order = soTakeoff) and ((GetPlayer.CurrentPlanet <> nil) or (GetPlayer.DockedTo <> nil)))
             or (GetPlayer.InHyperspace and (Cardinal(GetPlayer.OrderStateData and $FFFF) <= 1));
     PlayerStar.NextDay(RecordFilm);
     Stage := 2;
@@ -128,8 +128,7 @@ begin
   except
     on E: Exception do
     begin
-      AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
-      E.Message := 'Player-star turn failed, stage = ' + IntToStr(Stage) + ': ' + E.Message;
+      AddGameExceptionContext(E, 'Player-star turn; stage=' + IntToStr(Stage));
       raise;
     end;
   end;
@@ -147,9 +146,7 @@ begin
     // $133F and $FCFF selects nearest rounding, single x87 precision and masked exceptions.
     // Fixed-precision CPUs retain their native precision through FPC.
     ClearExceptions(False);
-    SetExceptionMask(
-        [exInvalidOp, exDenormalized, exZeroDivide, exOverflow, exUnderflow, exPrecision]
-    );
+    SetExceptionMask([exInvalidOp, exDenormalized, exZeroDivide, exOverflow, exUnderflow, exPrecision]);
     SetRoundMode(rmNearest);
     SetPrecisionMode(pmSingle);
     if Job = tcjGalaxy then
@@ -172,13 +169,7 @@ begin
           AdaptiveBeginCalcNextTurn :=
               Math.Min(
                   0.9,
-                  (AdaptiveBeginCalcNextTurn
-                          + 1
-                          - Math.Min(
-                              1,
-                              (LastGalaxyTurnDuration + 100)
-                                  / (BaseMovementStepsPerTurn * FrameMs)))
-                      / 2
+                  (AdaptiveBeginCalcNextTurn + 1 - Math.Min(1, (LastGalaxyTurnDuration + 100) / (BaseMovementStepsPerTurn * FrameMs))) / 2
               );
         end
         else
@@ -205,16 +196,11 @@ begin
   except
     on E: Exception do
     begin
-      AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
       FailureContext := 'Turn calculation failed, job = ' + IntToStr(Ord(Job));
       if Galaxy <> nil then
         FailureContext :=
-            FailureContext
-                + ', seed = '
-                + IntToStr(Integer(Galaxy.GenerationSeed))
-                + ', turn = '
-                + IntToStr(Galaxy.CurrentTurn);
-      E.Message := FailureContext + ': ' + E.Message;
+            FailureContext + ', seed = ' + IntToStr(Integer(Galaxy.GenerationSeed)) + ', turn = ' + IntToStr(Galaxy.CurrentTurn);
+      AddGameExceptionContext(E, FailureContext);
       raise;
     end;
   end;

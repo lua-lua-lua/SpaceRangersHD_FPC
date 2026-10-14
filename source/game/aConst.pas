@@ -78,26 +78,9 @@ type
 
   TEquipmentSizeFactorTable = array[1..5] of Single;
 
-  TStationEquipmentOfferQuota = packed record
-    Hulls: Integer;
-    FuelTanks: Integer;
-    Engines: Integer;
-    Radars: Integer;
-    Scanners: Integer;
-    RepairRobots: Integer;
-    CargoHooks: Integer;
-    DefGenerators: Integer;
-    Weapons: Integer;
-  end;
-
-  TStationEquipmentOfferQuotaTable = array[TStationType] of TStationEquipmentOfferQuota;
-
   TWeaponRangeLevelFactors = array[1..8] of Single;
 
-  TItemTypeSelection = set of 0..79;
-
-  TGoodsLegalityTable =
-      array[TGoodsIndex] of array[oiMaloc..oiGaal] of array[TPlanetGovernment] of Boolean;
+  TGoodsLegalityTable = array[TGoodsIndex] of array[oiMaloc..oiGaal] of array[TPlanetGovernment] of Boolean;
 
   TProgramDurationTable = array[TProgramIndex] of Integer;
 
@@ -125,7 +108,8 @@ var
 
 type
 
-  TEconomyInfo = packed record
+  // Internal tables use native pointer alignment; they are not serialized as records.
+  TEconomyInfo = record
     InternalName: WideString;
     DisplayName: WideString;
     ShortDisplayName: WideString;
@@ -334,19 +318,9 @@ var
   );
 
   PlanetEconomyInfo: array[TPlanetEconomy] of TEconomyInfo = (
-      (
-          InternalName: 'Agriculture';
-          DisplayName: '';
-          ShortDisplayName: '';
-          InventionProgressScale: 0.7
-      ),
+      (InternalName: 'Agriculture'; DisplayName: ''; ShortDisplayName: ''; InventionProgressScale: 0.7),
       (InternalName: 'Mixed'; DisplayName: ''; ShortDisplayName: ''; InventionProgressScale: 1.0),
-      (
-          InternalName: 'Industrial';
-          DisplayName: '';
-          ShortDisplayName: '';
-          InventionProgressScale: 1.4
-      )
+      (InternalName: 'Industrial'; DisplayName: ''; ShortDisplayName: ''; InventionProgressScale: 1.4)
   );
 
 type
@@ -400,11 +374,8 @@ var
   NonTargetableStationStandingMasks: TFactionStandingMasks =
       ([ssCoalitionMilitary..ssNeutral], [ssDominator], [ssPiratePassive..ssPirateMilitary]);
 
-  FactionStandingMasks: TFactionStandingMasks = (
-      [ssCoalitionMilitary..ssPiratePassive],
-      [ssDominator],
-      [ssCoalitionPassive..ssPirateMilitary]
-  );
+  FactionStandingMasks: TFactionStandingMasks =
+      ([ssCoalitionMilitary..ssPiratePassive], [ssDominator], [ssCoalitionPassive..ssPirateMilitary]);
 
   CareerTuning: array[TRangerCareer] of TStatusInfo = (
       (
@@ -430,7 +401,7 @@ var
       )
   );
 
-  TransportTypeNames: array[0..2] of WideString = ('Transport', 'Liner', 'Diplomat');
+  TransportTypeNames: array[TTransportType] of WideString = ('Transport', 'Liner', 'Diplomat');
 
 type
 
@@ -456,8 +427,7 @@ const
 
 var
 
-  DominatorShipTypeKeys: array[TKlingType] of WideString =
-      ('K0', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7');
+  DominatorShipTypeKeys: array[TKlingType] of WideString = ('K0', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7');
 
   DominatorShipDefinitions: array[TKlingType] of TKlingTypeInfo = (
       (
@@ -713,6 +683,8 @@ type
       t_UselessCountableItem = 75
   );
 
+  TItemTypeSelection = set of TItemType;
+
 const
 
   t_IndustrialLaser = t_Weapon1;
@@ -753,6 +725,22 @@ const
 
   WeaponCategoryItemType = t_IndustrialLaser;
 
+  WeaponItemTypes = [t_IndustrialLaser..t_CustomWeapon];
+
+  StandardWeaponItemTypes = [t_IndustrialLaser..t_Lirecron];
+
+  UtilityEquipmentTypes = [t_FuelTanks..t_DefGenerator];
+
+  RepairableItemTypes =
+      [
+          t_Artefact,
+          t_ArtefactHull..t_ArtefactAntigrav,
+          t_ArtDefToEnergy..t_ArtGiperJump,
+          t_ArtBio..t_ArtFastRacks,
+          t_FuelTanks..t_CustomWeapon,
+          t_Satellite
+      ];
+
 type
 
   TEquipmentInventionIndexTable = array[t_Hull..t_DefGenerator] of TPlanetInvention;
@@ -765,6 +753,24 @@ type
   TPlanetEquipmentOfferQuotaRow = array[t_Hull..WeaponCategoryItemType] of Integer;
 
   TPlanetEquipmentOfferQuotaTable = array[oiMaloc..oiGaal] of TPlanetEquipmentOfferQuotaRow;
+
+  TStationEquipmentOfferQuota = packed record
+  case Boolean of
+    False: (
+      Hulls: Integer;
+      FuelTanks: Integer;
+      Engines: Integer;
+      Radars: Integer;
+      Scanners: Integer;
+      RepairRobots: Integer;
+      CargoHooks: Integer;
+      DefGenerators: Integer;
+      Weapons: Integer;
+    );
+    True: (ByItemCategory: TPlanetEquipmentOfferQuotaRow;);
+  end;
+
+  TStationEquipmentOfferQuotaTable = array[TStationType] of TStationEquipmentOfferQuota;
 
 var
 
@@ -864,15 +870,15 @@ var
       'UselessCountableItem'
   );
 
-  ArtefactLootPools: array[0..3] of array of TItemType;
+  ArtefactLootPools: array[TItemLootPool] of array of TItemType;
 
-  CustomArtefactLootPools: array[0..3] of array of WideString;
+  CustomArtefactLootPools: array[TItemLootPool] of array of WideString;
 
-  UselessItemLootPools: array[0..3] of array of WideString;
+  UselessItemLootPools: array[TItemLootPool] of array of WideString;
 
 type
 
-  TGoodsInfo = packed record
+  TGoodsInfo = record
     InternalName: WideString;
     DisplayName: WideString;
     TradeName: WideString;
@@ -988,12 +994,11 @@ var
 
   GoodsTextOrder: TGoodsTextOrder = (0, 1, 5, 4, 3, 2, 6, 7);
 
-  MissionTypeNames: array[0..4] of WideString =
-      ('SendLetter', 'KillShip', 'PlanetQuest', 'DefSystem', 'DefShip');
+  MissionTypeNames: array[0..4] of WideString = ('SendLetter', 'KillShip', 'PlanetQuest', 'DefSystem', 'DefShip');
 
 type
 
-  TOwnerInfo = packed record
+  TOwnerInfo = record
     InternalName: WideString;
     DisplayName: WideString;
     FuelPriceFactor: Single;
@@ -1097,8 +1102,7 @@ var
       )
   );
 
-  PlanetOwnerMasks: TPlanetOwnerMasks =
-      (Coalition: [oiMaloc..oiGaal]; Dominators: [oiDominator]; PirateClan: [oiPirate]);
+  PlanetOwnerMasks: TPlanetOwnerMasks = (Coalition: [oiMaloc..oiGaal]; Dominators: [oiDominator]; PirateClan: [oiPirate]);
 
   OwnerRelations: TOwnerRelationTable = (
       (100, 80, 70, 40, 60, 0, 0, 30),
@@ -1223,94 +1227,14 @@ var
   );
 
   StationEquipmentOfferQuotas: TStationEquipmentOfferQuotaTable = (
-      (
-          Hulls: 4;
-          FuelTanks: 2;
-          Engines: 2;
-          Radars: 2;
-          Scanners: 2;
-          RepairRobots: 2;
-          CargoHooks: 2;
-          DefGenerators: 2;
-          Weapons: 4
-      ),
-      (
-          Hulls: 3;
-          FuelTanks: 2;
-          Engines: 2;
-          Radars: 2;
-          Scanners: 3;
-          RepairRobots: 2;
-          CargoHooks: 2;
-          DefGenerators: 2;
-          Weapons: 4
-      ),
-      (
-          Hulls: 4;
-          FuelTanks: 2;
-          Engines: 2;
-          Radars: 2;
-          Scanners: 2;
-          RepairRobots: 2;
-          CargoHooks: 2;
-          DefGenerators: 2;
-          Weapons: 6
-      ),
-      (
-          Hulls: 3;
-          FuelTanks: 2;
-          Engines: 2;
-          Radars: 2;
-          Scanners: 2;
-          RepairRobots: 2;
-          CargoHooks: 2;
-          DefGenerators: 2;
-          Weapons: 2
-      ),
-      (
-          Hulls: 5;
-          FuelTanks: 2;
-          Engines: 2;
-          Radars: 2;
-          Scanners: 2;
-          RepairRobots: 2;
-          CargoHooks: 2;
-          DefGenerators: 2;
-          Weapons: 2
-      ),
-      (
-          Hulls: 2;
-          FuelTanks: 1;
-          Engines: 2;
-          Radars: 1;
-          Scanners: 2;
-          RepairRobots: 1;
-          CargoHooks: 2;
-          DefGenerators: 2;
-          Weapons: 1
-      ),
-      (
-          Hulls: 3;
-          FuelTanks: 2;
-          Engines: 2;
-          Radars: 2;
-          Scanners: 3;
-          RepairRobots: 2;
-          CargoHooks: 2;
-          DefGenerators: 2;
-          Weapons: 4
-      ),
-      (
-          Hulls: 4;
-          FuelTanks: 2;
-          Engines: 2;
-          Radars: 2;
-          Scanners: 2;
-          RepairRobots: 2;
-          CargoHooks: 2;
-          DefGenerators: 2;
-          Weapons: 4
-      )
+      (Hulls: 4; FuelTanks: 2; Engines: 2; Radars: 2; Scanners: 2; RepairRobots: 2; CargoHooks: 2; DefGenerators: 2; Weapons: 4),
+      (Hulls: 3; FuelTanks: 2; Engines: 2; Radars: 2; Scanners: 3; RepairRobots: 2; CargoHooks: 2; DefGenerators: 2; Weapons: 4),
+      (Hulls: 4; FuelTanks: 2; Engines: 2; Radars: 2; Scanners: 2; RepairRobots: 2; CargoHooks: 2; DefGenerators: 2; Weapons: 6),
+      (Hulls: 3; FuelTanks: 2; Engines: 2; Radars: 2; Scanners: 2; RepairRobots: 2; CargoHooks: 2; DefGenerators: 2; Weapons: 2),
+      (Hulls: 5; FuelTanks: 2; Engines: 2; Radars: 2; Scanners: 2; RepairRobots: 2; CargoHooks: 2; DefGenerators: 2; Weapons: 2),
+      (Hulls: 2; FuelTanks: 1; Engines: 2; Radars: 1; Scanners: 2; RepairRobots: 1; CargoHooks: 2; DefGenerators: 2; Weapons: 1),
+      (Hulls: 3; FuelTanks: 2; Engines: 2; Radars: 2; Scanners: 3; RepairRobots: 2; CargoHooks: 2; DefGenerators: 2; Weapons: 4),
+      (Hulls: 4; FuelTanks: 2; Engines: 2; Radars: 2; Scanners: 2; RepairRobots: 2; CargoHooks: 2; DefGenerators: 2; Weapons: 4)
   );
 
   StationGoodsFactors: array[TStationType] of array[TGoodsIndex] of TPlanetGoodsFactors = (
@@ -1548,28 +1472,18 @@ var
       )
   );
 
-  MedalNames: array[0..5] of WideString = (
-      'ForLiberationSystem',
-      'ForAccomplishment',
-      'ForSecretMission',
-      'ForCowardice',
-      'ForPerfidy',
-      'ForPlanetBattle'
-  );
+  MedalNames: array[0..5] of WideString =
+      ('ForLiberationSystem', 'ForAccomplishment', 'ForSecretMission', 'ForCowardice', 'ForPerfidy', 'ForPlanetBattle');
 
-  CoalitionRankNames: array[TShipRank] of WideString =
-      ('Rookie', 'Cadet', 'Pilot', 'Wingman', 'Leader', 'Ace', 'Commander', 'Admiral');
+  CoalitionRankNames: array[TShipRank] of WideString = ('Rookie', 'Cadet', 'Pilot', 'Wingman', 'Leader', 'Ace', 'Commander', 'Admiral');
 
-  CoalitionRankPointThresholds: array[TShipRank] of Word =
-      (100, 250, 450, 700, 1000, 1500, 2000, 0);
+  CoalitionRankPointThresholds: array[TShipRank] of Word = (100, 250, 450, 700, 1000, 1500, 2000, 0);
 
-  PirateRankNames: array[TShipRank] of WideString =
-      ('Noobie', 'Kid', 'Rader', 'Skipper', 'Rough', 'Ataman', 'Khan', 'Baron');
+  PirateRankNames: array[TShipRank] of WideString = ('Noobie', 'Kid', 'Rader', 'Skipper', 'Rough', 'Ataman', 'Khan', 'Baron');
 
   PirateRankPointThresholds: array[TShipRank] of Word = (100, 250, 450, 700, 1000, 1500, 3000, 0);
 
-  SkillConfigNames: array[TPilotSkill] of WideString =
-      ('sAccuracy', 'sMobility', 'sTechnical', 'sTrader', 'sCharm', 'sLeadership');
+  SkillConfigNames: array[TPilotSkill] of WideString = ('sAccuracy', 'sMobility', 'sTechnical', 'sTrader', 'sCharm', 'sLeadership');
 
   RaceSkillEvaluationFactors: array[oiMaloc..oiGaal] of array[TPilotSkill] of Single = (
       (1.2, 1.1, 0.9, 0.8, 1.0, 1.0),
@@ -1723,16 +1637,8 @@ var
       bonNull
   );
 
-  OwnerWeaponAvailability: TOwnerWeaponAvailabilityTable = (
-      waMalocOnly,
-      waPelengOnly,
-      waPeopleOnly,
-      waFeiOnly,
-      waGaalOnly,
-      waNotSoldAndNodeRepair,
-      waNotSold,
-      waPirateOnly
-  );
+  OwnerWeaponAvailability: TOwnerWeaponAvailabilityTable =
+      (waMalocOnly, waPelengOnly, waPeopleOnly, waFeiOnly, waGaalOnly, waNotSoldAndNodeRepair, waNotSold, waPirateOnly);
 
   WeaponDamageFlagNames: array[0..20] of WideString = (
       'Energy',
@@ -1825,9 +1731,9 @@ type
 
 var
 
-  CombatStatusHullFactors: array[0..6] of Single = (1, 1, 1, 0.3, 0.3, 0, 0);
+  CombatStatusHullFactors: array[TCombatStatusEffectType] of Single = (1, 1, 1, 0.3, 0.3, 0, 0);
 
-  CombatStatusAccumulationFactors: array[0..6] of Single = (0, 0, 0.1, 0, 0, 0.025, 0);
+  CombatStatusAccumulationFactors: array[TCombatStatusEffectType] of Single = (0, 0, 0.1, 0, 0, 0.025, 0);
 
   EquipmentBonusNames: array[TEquipmentBonusKind] of WideString = (
       'bonHull',
@@ -1885,7 +1791,7 @@ type
 
 var
 
-  EquipmentBonusSkills: array[0..5] of TPilotSkill =
+  EquipmentBonusSkills: array[bonSkill1..bonSkill6] of TPilotSkill =
       (psAccuracy, psManeuverability, psTechnical, psTrading, psCharisma, psLeadership);
 
   EquipmentSizeFactors: TEquipmentSizeFactorTable = (2.0, 1.5, 1.0, 0.7, 0.5);
@@ -2209,8 +2115,7 @@ type
 
 var
 
-  StationServiceRepeatPeriods: array[TCoalitionProject] of Integer =
-      (100, 400, 300, 200, 350, 250, 150, 220, 40, 50, 70, 80);
+  StationServiceRepeatPeriods: array[TCoalitionProject] of Integer = (100, 400, 300, 200, 350, 250, 150, 220, 40, 50, 70, 80);
 
   ProgramNames: array[TProgramIndex] of WideString = (
       'KellerCall',
@@ -2231,8 +2136,7 @@ var
 
   PirateProgramBatchSizes: array[TProgramIndex] of Integer = (0, 0, 0, 0, 0, 5, 3, 3, 3, 3, 1, 1);
 
-  PirateProgramBaseCosts: array[TProgramIndex] of Integer =
-      (0, 0, 0, 0, 0, 500, 1000, 800, 300, 200, 1200, 900);
+  PirateProgramBaseCosts: array[TProgramIndex] of Integer = (0, 0, 0, 0, 0, 500, 1000, 800, 300, 200, 1200, 900);
 
   GoodsMarketBaseCaptured: Boolean = False;
 
@@ -2302,13 +2206,7 @@ function SysToShipType(const Name: WideString): TShipType;
 
 function GetAverageItemSize(ItemType: TItemType): Integer;
 
-function GenerateValueForSizeLevel(
-    Level: Byte;
-    Minimum: Integer;
-    Maximum: Integer;
-    VariationPercent: Byte;
-    Seed: Cardinal
-): Integer;
+function GenerateValueForSizeLevel(Level: Byte; Minimum: Integer; Maximum: Integer; VariationPercent: Byte; Seed: Cardinal): Integer;
 
 function SizeTagToLevel(const Tag: WideString): Byte;
 
@@ -2352,7 +2250,7 @@ function PickRandomItemTypeFromSeed(Mask: TItemTypeSelection; var Seed: Cardinal
 
 function CountItemTypesInMask(Mask: TItemTypeSelection): Integer;
 
-function GetItemTypeFromMask(Mask: TItemTypeSelection; Index: Integer): Byte;
+function GetItemTypeFromMask(Mask: TItemTypeSelection; Index: Integer): TItemType;
 
 function ClassifyWeaponDamageFlags(Flags: TDamageFlagSet): TWeaponDamageClass;
 
@@ -2393,7 +2291,7 @@ var
   Difficulty: ^TGalaxyDifficultyTuning;
 
   function ExtrapolateLinearDifficulty(
-      Level: Byte;
+      Level: TDifficultyLevel;
       Level2, Level3: Single
   ): Single; { Nested in InitializeGameplayConfig; unused caller-popped static link. }
   var
@@ -2416,23 +2314,19 @@ var
 
 begin
   if LanguageDataConfig.CountParamsByPath('Constellations.GalaxyCountStars') > 0 then
-    GalaxyStarCount :=
-        ExtractDigitsToIntW(LanguageDataConfig.GetParamByPath('Constellations.GalaxyCountStars'))
+    GalaxyStarCount := ExtractDigitsToIntW(LanguageDataConfig.GetParamByPath('Constellations.GalaxyCountStars'))
   else
     GalaxyStarCount := 73;
   if LanguageDataConfig.CountParamsByPath('Constellations.GalaxySizeY') > 0 then
-    GalaxySizeY :=
-        ExtractDigitsToIntW(LanguageDataConfig.GetParamByPath('Constellations.GalaxySizeY'))
+    GalaxySizeY := ExtractDigitsToIntW(LanguageDataConfig.GetParamByPath('Constellations.GalaxySizeY'))
   else
     GalaxySizeY := 100;
   if LanguageDataConfig.CountParamsByPath('Constellations.GalaxySizeX') > 0 then
-    GalaxySizeX :=
-        ExtractDigitsToIntW(LanguageDataConfig.GetParamByPath('Constellations.GalaxySizeX'))
+    GalaxySizeX := ExtractDigitsToIntW(LanguageDataConfig.GetParamByPath('Constellations.GalaxySizeX'))
   else
     GalaxySizeX := 145;
   if LanguageDataConfig.CountParamsByPath('GalaxyNews.MaxCntPlanetNews') > 0 then
-    MaxPlanetNews :=
-        ExtractDigitsToIntW(LanguageDataConfig.GetParamByPath('GalaxyNews.MaxCntPlanetNews'))
+    MaxPlanetNews := ExtractDigitsToIntW(LanguageDataConfig.GetParamByPath('GalaxyNews.MaxCntPlanetNews'))
   else
     MaxPlanetNews := 9;
   for Level := 4 to 9 do
@@ -2452,11 +2346,7 @@ begin
             GalaxyDifficultyTuning[3].QuestTimeAndExperienceFactor
         );
     Difficulty.EquipmentWearFactor :=
-        ExtrapolateLinearDifficulty(
-            Level,
-            GalaxyDifficultyTuning[2].EquipmentWearFactor,
-            GalaxyDifficultyTuning[3].EquipmentWearFactor
-        );
+        ExtrapolateLinearDifficulty(Level, GalaxyDifficultyTuning[2].EquipmentWearFactor, GalaxyDifficultyTuning[3].EquipmentWearFactor);
     Difficulty.InitialPirateControlPercent :=
         Round(
             ExtrapolateLinearDifficulty(
@@ -2500,17 +2390,9 @@ begin
             GalaxyDifficultyTuning[3].InventionProgressScale
         );
     Difficulty.ArcadeRewardScale :=
-        ExtrapolateGeometricDifficulty(
-            Level,
-            GalaxyDifficultyTuning[2].ArcadeRewardScale,
-            GalaxyDifficultyTuning[3].ArcadeRewardScale
-        );
+        ExtrapolateGeometricDifficulty(Level, GalaxyDifficultyTuning[2].ArcadeRewardScale, GalaxyDifficultyTuning[3].ArcadeRewardScale);
     Difficulty.QuestMoneyFactor :=
-        ExtrapolateGeometricDifficulty(
-            Level,
-            GalaxyDifficultyTuning[2].QuestMoneyFactor,
-            GalaxyDifficultyTuning[3].QuestMoneyFactor
-        );
+        ExtrapolateGeometricDifficulty(Level, GalaxyDifficultyTuning[2].QuestMoneyFactor, GalaxyDifficultyTuning[3].QuestMoneyFactor);
     Difficulty.StartingPlayerMoney :=
         Round(
             ExtrapolateGeometricDifficulty(
@@ -2533,36 +2415,26 @@ begin
         );
   end;
   for GoodsIndex := Low(TGoodsIndex) to High(TGoodsIndex) do
-    GoodsMarket[GoodsIndex].DisplayName :=
-        LocalizedText('Items.Goods.Name.' + IntToStr(GoodsIndex + 1));
+    GoodsMarket[GoodsIndex].DisplayName := LocalizedText('Items.Goods.Name.' + IntToStr(GoodsIndex + 1));
   for GoodsIndex := Low(TGoodsIndex) to High(TGoodsIndex) do
-    GoodsMarket[GoodsIndex].TradeName :=
-        LocalizedText('Items.Goods.NameBuy.' + IntToStr(GoodsIndex + 1));
+    GoodsMarket[GoodsIndex].TradeName := LocalizedText('Items.Goods.NameBuy.' + IntToStr(GoodsIndex + 1));
   for Government := Low(TPlanetGovernment) to High(TPlanetGovernment) do
-    PlanetGovernmentMarket[Government].DisplayName :=
-        LocalizedText('Goverment.Type.' + IntToStr(Ord(Government)));
+    PlanetGovernmentMarket[Government].DisplayName := LocalizedText('Goverment.Type.' + IntToStr(Ord(Government)));
   for Relation := Low(TRelationLevel) to High(TRelationLevel) do
-    RelationInfo[Relation].DisplayName :=
-        LocalizedText('Relations.Type.' + IntToStr(Ord(Relation)));
+    RelationInfo[Relation].DisplayName := LocalizedText('Relations.Type.' + IntToStr(Ord(Relation)));
   for KlingKind := Low(TKlingType) to High(TKlingType) do
     for Series := Low(TDominatorSeries) to High(TDominatorSeries) do
       DominatorShipDefinitions[KlingKind].DisplayNames[Series] :=
-          LookupLocalizedTextByKey(
-              'ShipType.Dominator.' + DominatorSeriesNames[Series] + '.' + IntToStr(Ord(KlingKind))
-          );
+          LookupLocalizedTextByKey('ShipType.Dominator.' + DominatorSeriesNames[Series] + '.' + IntToStr(Ord(KlingKind)));
   for Owner := oiMaloc to oiPirate do
-    OwnerInfo[Owner].DisplayName :=
-        LookupLocalizedTextByKey('Race.Name.' + OwnerInfo[Owner].InternalName);
+    OwnerInfo[Owner].DisplayName := LookupLocalizedTextByKey('Race.Name.' + OwnerInfo[Owner].InternalName);
   // Both identical localization passes are present in the native initializer.
   for Owner := oiMaloc to oiPirate do
-    OwnerInfo[Owner].DisplayName :=
-        LookupLocalizedTextByKey('Race.Name.' + OwnerInfo[Owner].InternalName);
+    OwnerInfo[Owner].DisplayName := LookupLocalizedTextByKey('Race.Name.' + OwnerInfo[Owner].InternalName);
   for Economy := Low(TPlanetEconomy) to High(TPlanetEconomy) do
   begin
-    PlanetEconomyInfo[Economy].DisplayName :=
-        LookupLocalizedTextByKey('Economy.Name.' + IntToStr(Ord(Economy)));
-    PlanetEconomyInfo[Economy].ShortDisplayName :=
-        LookupLocalizedTextByKey('Economy.ShortName.' + IntToStr(Ord(Economy)));
+    PlanetEconomyInfo[Economy].DisplayName := LookupLocalizedTextByKey('Economy.Name.' + IntToStr(Ord(Economy)));
+    PlanetEconomyInfo[Economy].ShortDisplayName := LookupLocalizedTextByKey('Economy.ShortName.' + IntToStr(Ord(Economy)));
   end;
   if not GoodsMarketBaseCaptured then
   begin
@@ -2580,15 +2452,7 @@ begin
   LoadHullSeriesConfiguration;
   if LanguageDataConfig.CountParamsByPath('Artefacts.NumericValues.MaxSlots') > 0 then
     DefaultHullSlotCounts[sskArtefact] :=
-        Max(
-            4,
-            Min(
-                32,
-                ExtractDigitsToIntW(
-                    LanguageDataConfig.GetParamByPath('Artefacts.NumericValues.MaxSlots')
-                )
-            )
-        )
+        Max(4, Min(32, ExtractDigitsToIntW(LanguageDataConfig.GetParamByPath('Artefacts.NumericValues.MaxSlots'))))
   else
     DefaultHullSlotCounts[sskArtefact] := 4;
   HullMassEvaluationStart := Round(HullBaseSize * EquipmentSizeFactors[5] * 2);
@@ -2737,41 +2601,21 @@ end;
 function OwnerFromInternalName(const Name: WideString): TOwnerId;
 begin
   if Name = 'Maloc' then
-  begin
-    Result := oiMaloc;
-    Exit;
-  end;
-  if Name = 'Peleng' then
-  begin
-    Result := oiPeleng;
-    Exit;
-  end;
-  if Name = 'People' then
-  begin
-    Result := oiHuman;
-    Exit;
-  end;
-  if Name = 'Fei' then
-  begin
-    Result := oiFeyan;
-    Exit;
-  end;
-  if Name = 'Gaal' then
-  begin
-    Result := oiGaal;
-    Exit;
-  end;
-  if Name = 'Kling' then
-  begin
-    Result := oiDominator;
-    Exit;
-  end;
-  if Name = 'PirateClan' then
-  begin
-    Result := oiPirate;
-    Exit;
-  end;
-  Result := oiUninhabited;
+    Result := oiMaloc
+  else if Name = 'Peleng' then
+    Result := oiPeleng
+  else if Name = 'People' then
+    Result := oiHuman
+  else if Name = 'Fei' then
+    Result := oiFeyan
+  else if Name = 'Gaal' then
+    Result := oiGaal
+  else if Name = 'Kling' then
+    Result := oiDominator
+  else if Name = 'PirateClan' then
+    Result := oiPirate
+  else
+    Result := oiUninhabited;
 end;
 
 function IsKnownOwnerName(const Name: WideString): Boolean;
@@ -2930,23 +2774,17 @@ begin
       Result := LongInt(Cardinal(PtrUInt(Pointer(GoodsMarketBase[Ord(t_Food)].TradeName))));
     end;
   else
-    if ItemType in [t_IndustrialLaser..t_Lirecron] then
+    if ItemType in StandardWeaponItemTypes then
       Result := WeaponInfos[ItemType].AverageSize
     else
     begin
-      Exception
-          .Create('Error ItemAverageSize'); // Native allocates the exception without raising it.
+      Exception.Create('Error ItemAverageSize'); // Native allocates the exception without raising it.
       Result := 0;
     end;
   end;
 end;
 
-function GenerateValueForSizeLevel(
-    Level: Byte;
-    Minimum, Maximum: Integer;
-    VariationPercent: Byte;
-    Seed: Cardinal
-): Integer;
+function GenerateValueForSizeLevel(Level: Byte; Minimum, Maximum: Integer; VariationPercent: Byte; Seed: Cardinal): Integer;
 var
   Center, Bound: Integer;
 begin
@@ -2964,7 +2802,7 @@ begin
   else
     Center := (Minimum + Maximum) div 2;
   end;
-  if SeededRandomUnitFloat(Seed + Cardinal(Center)) < 0.5 then
+  if SeededRandomUnitFloat(Seed + Center) < 0.5 then
   begin
     Bound := Min(Maximum, Round(Center / 100 * VariationPercent + Center));
     Result := SeededRandomIntRange(Center, Bound, Seed);
@@ -3046,7 +2884,7 @@ begin
     t_CargoHook: Result := sskCargoHook;
     t_DefGenerator: Result := sskDefGenerator;
   else
-    if ItemType in [t_IndustrialLaser..t_CustomWeapon] then
+    if ItemType in WeaponItemTypes then
       Result := sskWeapon
     else if ItemType in [t_Artefact..t_ArtFastRacks] then
       Result := sskArtefact
@@ -3072,12 +2910,7 @@ begin
     Result := ReplaceAllWideString(Result, '<br>', #13#10);
     Result := ReplaceAllWideString(Result, '<ll>', #13#10' '#13#10);
     if GetPlayer <> nil then
-      Result :=
-          ReplaceAllWideString(
-              Result,
-              '<Player>',
-              TextHighlightColorTag + GetPlayer.Name + EndColorTag
-          );
+      Result := ReplaceAllWideString(Result, '<Player>', TextHighlightColorTag + GetPlayer.Name + EndColorTag);
   end;
 end;
 
@@ -3098,12 +2931,7 @@ begin
     Result := ReplaceAllWideString(Result, '<br>', #13#10);
     Result := ReplaceAllWideString(Result, '<ll>', #13#10' '#13#10);
     if GetPlayer <> nil then
-      Result :=
-          ReplaceAllWideString(
-              Result,
-              '<Player>',
-              TextHighlightColorTag + GetPlayer.Name + EndColorTag
-          );
+      Result := ReplaceAllWideString(Result, '<Player>', TextHighlightColorTag + GetPlayer.Name + EndColorTag);
     Result := ReplaceAllWideString(Result, '<clr>', TextHighlightColorTag);
     Result := ReplaceAllWideString(Result, '<clrEnd>', EndColorTag);
   end;
@@ -3116,12 +2944,7 @@ begin
     Text := ReplaceAllWideString(Text, '<br>', #13#10);
     Text := ReplaceAllWideString(Text, '<ll>', #13#10' '#13#10);
     if GetPlayer <> nil then
-      Text :=
-          ReplaceAllWideString(
-              Text,
-              '<Player>',
-              TextHighlightColorTag + GetPlayer.Name + EndColorTag
-          );
+      Text := ReplaceAllWideString(Text, '<Player>', TextHighlightColorTag + GetPlayer.Name + EndColorTag);
     Text := ReplaceAllWideString(Text, '<clr>', TextHighlightColorTag);
     Text := ReplaceAllWideString(Text, '<clrEnd>', EndColorTag);
   end;
@@ -3134,12 +2957,7 @@ begin
     Text := ReplaceAllWideString(Text, '<br>', #13#10);
     Text := ReplaceAllWideString(Text, '<ll>', #13#10' '#13#10);
     if GetPlayer <> nil then
-      Text :=
-          ReplaceAllWideString(
-              Text,
-              '<Player>',
-              TextHighlightColorTag + GetPlayer.Name + EndColorTag
-          );
+      Text := ReplaceAllWideString(Text, '<Player>', TextHighlightColorTag + GetPlayer.Name + EndColorTag);
     Text := ReplaceAllWideString(Text, '<clr>', TextHighlightColorTag);
     Text := ReplaceAllWideString(Text, '<clrEnd>', EndColorTag);
   end;
@@ -3189,7 +3007,7 @@ end;
 
 procedure LoadArtefactConfiguration;
 const
-  ArtefactTypes = [0..79] - [0..9] - [42..79];
+  ArtefactTypes = [t_ArtefactHull..t_ArtFastRacks];
 var
   Index: Integer;
   Config, Block: TBlockParEC;
@@ -3248,27 +3066,21 @@ begin
   WeaponToSpeedArtefactBoost := StrToInt(AnsiString(Config.GetParam('kArtWeaponToSpeedEx')));
   DefenseToEnergyUpperBoost := ExtractDecimalToSingleW(Config.GetParam('kArtDefToEnergyUpEx'));
   DefenseToEnergyMinimumBoost := ExtractDecimalToSingleW(Config.GetParam('kArtDefToEnergyMinEx'));
-  DefenseToEnergyBoostPenalty :=
-      ExtractDecimalToSingleW(Config.GetParam('kArtDefToEnergyPenaltyEx'));
+  DefenseToEnergyBoostPenalty := ExtractDecimalToSingleW(Config.GetParam('kArtDefToEnergyPenaltyEx'));
   EnergyPulseArtefactBoostFactor := ExtractDecimalToSingleW(Config.GetParam('kArtEnergyPulseEx'));
   SplinterArtefactBoostFactor := ExtractDecimalToSingleW(Config.GetParam('kArtSplinterEx'));
   HyperJumpArtefactBoostRange := StrToInt(AnsiString(Config.GetParam('kArtGiperJumpEx')));
-  StarHeatArtefactBoostReduction :=
-      ExtractDecimalToSingleW(Config.GetParam('kArtPowerSunProtectionEx'));
+  StarHeatArtefactBoostReduction := ExtractDecimalToSingleW(Config.GetParam('kArtPowerSunProtectionEx'));
   ExtraMissileBoostChance := ExtractDecimalToSingleW(Config.GetParam('kArtFastRacksChanceEx'));
   AfterburnerArtefactBoostWearFactor := ExtractDecimalToSingleW(Config.GetParam('kArtForsageEx'));
   PointDefenseBonusRange := StrToInt(AnsiString(Config.GetParam('kPDTurretRangeEx')));
   MinTransmitterPower := StrToInt(AnsiString(Config.GetParam('MinTransmitterPower')));
   AverageTransmitterPower := StrToInt(AnsiString(Config.GetParam('AverageTransmitterPower')));
   MaxTransmitterPower := StrToInt(AnsiString(Config.GetParam('MaxTransmitterPower')));
-  TransmitterSameSystemPenalty :=
-      StrToInt(AnsiString(Config.GetParam('kTransmitterPenaltySameSystem')));
-  TransmitterAnySystemPenalty :=
-      StrToInt(AnsiString(Config.GetParam('kTransmitterPenaltyAnySystem')));
-  TransmitterSameSystemPenaltyTurns :=
-      StrToInt(AnsiString(Config.GetParam('kTransmitterPenaltySameSystemDuration')));
-  TransmitterAnySystemPenaltyTurns :=
-      StrToInt(AnsiString(Config.GetParam('kTransmitterPenaltyAnySystemDuration')));
+  TransmitterSameSystemPenalty := StrToInt(AnsiString(Config.GetParam('kTransmitterPenaltySameSystem')));
+  TransmitterAnySystemPenalty := StrToInt(AnsiString(Config.GetParam('kTransmitterPenaltyAnySystem')));
+  TransmitterSameSystemPenaltyTurns := StrToInt(AnsiString(Config.GetParam('kTransmitterPenaltySameSystemDuration')));
+  TransmitterAnySystemPenaltyTurns := StrToInt(AnsiString(Config.GetParam('kTransmitterPenaltyAnySystemDuration')));
   SubportalRewardPenalty := StrToInt(AnsiString(Config.GetParam('kSubportalPenalty')));
   SubportalRewardPenaltyTurns := StrToInt(AnsiString(Config.GetParam('kSubportalPenaltyDuration')));
   ItemExplosionBonusDamage := StrToInt(AnsiString(Config.GetParam('BombPower')));
@@ -3283,17 +3095,11 @@ begin
   Config := LanguageDataConfig.GetBlockByPath('Artefacts');
   for Index := 1 to CountItemTypesInMask(ArtefactTypes) do
   begin
-    Kind := TItemType(GetItemTypeFromMask([0..79] - [0..9] - [42..79], Index));
+    Kind := GetItemTypeFromMask(ArtefactTypes, Index);
     Block := Config.GetBlock(ItemTypeNames[Kind]);
-    CanBeABDrop :=
-        (Block.CountParams('CanBeABDrop') <= 0)
-            or (ExtractDigitsToIntW(Block.GetParam('CanBeABDrop')) > 0);
-    CanBeTreasure :=
-        (Block.CountParams('CanBeTreasure') <= 0)
-            or (ExtractDigitsToIntW(Block.GetParam('CanBeTreasure')) > 0);
-    CanBeReward :=
-        (Block.CountParams('CanBeReward') <= 0)
-            or (ExtractDigitsToIntW(Block.GetParam('CanBeReward')) > 0);
+    CanBeABDrop := (Block.CountParams('CanBeABDrop') <= 0) or (ExtractDigitsToIntW(Block.GetParam('CanBeABDrop')) > 0);
+    CanBeTreasure := (Block.CountParams('CanBeTreasure') <= 0) or (ExtractDigitsToIntW(Block.GetParam('CanBeTreasure')) > 0);
+    CanBeReward := (Block.CountParams('CanBeReward') <= 0) or (ExtractDigitsToIntW(Block.GetParam('CanBeReward')) > 0);
     if CanBeABDrop or CanBeTreasure or CanBeReward then
     begin
       if CanBeABDrop then
@@ -3305,45 +3111,39 @@ begin
       Inc(AnyCount);
     end;
   end;
-  SetLength(ArtefactLootPools[0], ABDropCount);
-  SetLength(ArtefactLootPools[1], TreasureCount);
-  SetLength(ArtefactLootPools[2], RewardCount);
-  SetLength(ArtefactLootPools[3], AnyCount);
+  SetLength(ArtefactLootPools[ilpArcadeBattle], ABDropCount);
+  SetLength(ArtefactLootPools[ilpTreasure], TreasureCount);
+  SetLength(ArtefactLootPools[ilpReward], RewardCount);
+  SetLength(ArtefactLootPools[ilpAnyAvailable], AnyCount);
   ABDropCount := 0;
   TreasureCount := 0;
   RewardCount := 0;
   AnyCount := 0;
   for Index := 1 to CountItemTypesInMask(ArtefactTypes) do
   begin
-    Kind := TItemType(GetItemTypeFromMask([0..79] - [0..9] - [42..79], Index));
+    Kind := GetItemTypeFromMask(ArtefactTypes, Index);
     Block := Config.GetBlock(ItemTypeNames[Kind]);
-    CanBeABDrop :=
-        (Block.CountParams('CanBeABDrop') <= 0)
-            or (ExtractDigitsToIntW(Block.GetParam('CanBeABDrop')) > 0);
-    CanBeTreasure :=
-        (Block.CountParams('CanBeTreasure') <= 0)
-            or (ExtractDigitsToIntW(Block.GetParam('CanBeTreasure')) > 0);
-    CanBeReward :=
-        (Block.CountParams('CanBeReward') <= 0)
-            or (ExtractDigitsToIntW(Block.GetParam('CanBeReward')) > 0);
+    CanBeABDrop := (Block.CountParams('CanBeABDrop') <= 0) or (ExtractDigitsToIntW(Block.GetParam('CanBeABDrop')) > 0);
+    CanBeTreasure := (Block.CountParams('CanBeTreasure') <= 0) or (ExtractDigitsToIntW(Block.GetParam('CanBeTreasure')) > 0);
+    CanBeReward := (Block.CountParams('CanBeReward') <= 0) or (ExtractDigitsToIntW(Block.GetParam('CanBeReward')) > 0);
     if CanBeABDrop or CanBeTreasure or CanBeReward then
     begin
       if CanBeABDrop then
       begin
-        ArtefactLootPools[0][ABDropCount] := Kind;
+        ArtefactLootPools[ilpArcadeBattle][ABDropCount] := Kind;
         Inc(ABDropCount);
       end;
       if CanBeTreasure then
       begin
-        ArtefactLootPools[1][TreasureCount] := Kind;
+        ArtefactLootPools[ilpTreasure][TreasureCount] := Kind;
         Inc(TreasureCount);
       end;
       if CanBeReward then
       begin
-        ArtefactLootPools[2][RewardCount] := Kind;
+        ArtefactLootPools[ilpReward][RewardCount] := Kind;
         Inc(RewardCount);
       end;
-      ArtefactLootPools[3][AnyCount] := Kind;
+      ArtefactLootPools[ilpAnyAvailable][AnyCount] := Kind;
       Inc(AnyCount);
     end;
   end;
@@ -3355,15 +3155,9 @@ begin
   for Index := 0 to Config.GetBlockCount - 1 do
   begin
     Block := Config.GetBlockByIndex(Index);
-    CanBeABDrop :=
-        (Block.CountParams('CanBeABDrop') > 0)
-            and (ExtractDigitsToIntW(Block.GetParam('CanBeABDrop')) > 0);
-    CanBeTreasure :=
-        (Block.CountParams('CanBeTreasure') > 0)
-            and (ExtractDigitsToIntW(Block.GetParam('CanBeTreasure')) > 0);
-    CanBeReward :=
-        (Block.CountParams('CanBeReward') > 0)
-            and (ExtractDigitsToIntW(Block.GetParam('CanBeReward')) > 0);
+    CanBeABDrop := (Block.CountParams('CanBeABDrop') > 0) and (ExtractDigitsToIntW(Block.GetParam('CanBeABDrop')) > 0);
+    CanBeTreasure := (Block.CountParams('CanBeTreasure') > 0) and (ExtractDigitsToIntW(Block.GetParam('CanBeTreasure')) > 0);
+    CanBeReward := (Block.CountParams('CanBeReward') > 0) and (ExtractDigitsToIntW(Block.GetParam('CanBeReward')) > 0);
     if CanBeABDrop or CanBeTreasure or CanBeReward then
     begin
       if CanBeABDrop then
@@ -3375,10 +3169,10 @@ begin
       Inc(AnyCount);
     end;
   end;
-  SetLength(CustomArtefactLootPools[0], ABDropCount);
-  SetLength(CustomArtefactLootPools[1], TreasureCount);
-  SetLength(CustomArtefactLootPools[2], RewardCount);
-  SetLength(CustomArtefactLootPools[3], AnyCount);
+  SetLength(CustomArtefactLootPools[ilpArcadeBattle], ABDropCount);
+  SetLength(CustomArtefactLootPools[ilpTreasure], TreasureCount);
+  SetLength(CustomArtefactLootPools[ilpReward], RewardCount);
+  SetLength(CustomArtefactLootPools[ilpAnyAvailable], AnyCount);
   ABDropCount := 0;
   TreasureCount := 0;
   RewardCount := 0;
@@ -3386,34 +3180,28 @@ begin
   for Index := 0 to Config.GetBlockCount - 1 do
   begin
     Block := Config.GetBlockByIndex(Index);
-    CanBeABDrop :=
-        (Block.CountParams('CanBeABDrop') > 0)
-            and (ExtractDigitsToIntW(Block.GetParam('CanBeABDrop')) > 0);
-    CanBeTreasure :=
-        (Block.CountParams('CanBeTreasure') > 0)
-            and (ExtractDigitsToIntW(Block.GetParam('CanBeTreasure')) > 0);
-    CanBeReward :=
-        (Block.CountParams('CanBeReward') > 0)
-            and (ExtractDigitsToIntW(Block.GetParam('CanBeReward')) > 0);
+    CanBeABDrop := (Block.CountParams('CanBeABDrop') > 0) and (ExtractDigitsToIntW(Block.GetParam('CanBeABDrop')) > 0);
+    CanBeTreasure := (Block.CountParams('CanBeTreasure') > 0) and (ExtractDigitsToIntW(Block.GetParam('CanBeTreasure')) > 0);
+    CanBeReward := (Block.CountParams('CanBeReward') > 0) and (ExtractDigitsToIntW(Block.GetParam('CanBeReward')) > 0);
     if CanBeABDrop or CanBeTreasure or CanBeReward then
     begin
       ItemName := Config.GetBlockNameByIndex(Index);
       if CanBeABDrop then
       begin
-        CustomArtefactLootPools[0][ABDropCount] := ItemName;
+        CustomArtefactLootPools[ilpArcadeBattle][ABDropCount] := ItemName;
         Inc(ABDropCount);
       end;
       if CanBeTreasure then
       begin
-        CustomArtefactLootPools[1][TreasureCount] := ItemName;
+        CustomArtefactLootPools[ilpTreasure][TreasureCount] := ItemName;
         Inc(TreasureCount);
       end;
       if CanBeReward then
       begin
-        CustomArtefactLootPools[2][RewardCount] := ItemName;
+        CustomArtefactLootPools[ilpReward][RewardCount] := ItemName;
         Inc(RewardCount);
       end;
-      CustomArtefactLootPools[3][AnyCount] := ItemName;
+      CustomArtefactLootPools[ilpAnyAvailable][AnyCount] := ItemName;
       Inc(AnyCount);
     end;
   end;
@@ -3425,15 +3213,9 @@ begin
   for Index := 0 to Config.GetBlockCount - 1 do
   begin
     Block := Config.GetBlockByIndex(Index);
-    CanBeABDrop :=
-        (Block.CountParams('CanBeABDrop') > 0)
-            and (ExtractDigitsToIntW(Block.GetParam('CanBeABDrop')) > 0);
-    CanBeTreasure :=
-        (Block.CountParams('CanBeTreasure') > 0)
-            and (ExtractDigitsToIntW(Block.GetParam('CanBeTreasure')) > 0);
-    CanBeReward :=
-        (Block.CountParams('CanBeReward') > 0)
-            and (ExtractDigitsToIntW(Block.GetParam('CanBeReward')) > 0);
+    CanBeABDrop := (Block.CountParams('CanBeABDrop') > 0) and (ExtractDigitsToIntW(Block.GetParam('CanBeABDrop')) > 0);
+    CanBeTreasure := (Block.CountParams('CanBeTreasure') > 0) and (ExtractDigitsToIntW(Block.GetParam('CanBeTreasure')) > 0);
+    CanBeReward := (Block.CountParams('CanBeReward') > 0) and (ExtractDigitsToIntW(Block.GetParam('CanBeReward')) > 0);
     if CanBeABDrop or CanBeTreasure or CanBeReward then
     begin
       if CanBeABDrop then
@@ -3445,10 +3227,10 @@ begin
       Inc(AnyCount);
     end;
   end;
-  SetLength(UselessItemLootPools[0], ABDropCount);
-  SetLength(UselessItemLootPools[1], TreasureCount);
-  SetLength(UselessItemLootPools[2], RewardCount);
-  SetLength(UselessItemLootPools[3], AnyCount);
+  SetLength(UselessItemLootPools[ilpArcadeBattle], ABDropCount);
+  SetLength(UselessItemLootPools[ilpTreasure], TreasureCount);
+  SetLength(UselessItemLootPools[ilpReward], RewardCount);
+  SetLength(UselessItemLootPools[ilpAnyAvailable], AnyCount);
   ABDropCount := 0;
   TreasureCount := 0;
   RewardCount := 0;
@@ -3456,34 +3238,28 @@ begin
   for Index := 0 to Config.GetBlockCount - 1 do
   begin
     Block := Config.GetBlockByIndex(Index);
-    CanBeABDrop :=
-        (Block.CountParams('CanBeABDrop') > 0)
-            and (ExtractDigitsToIntW(Block.GetParam('CanBeABDrop')) > 0);
-    CanBeTreasure :=
-        (Block.CountParams('CanBeTreasure') > 0)
-            and (ExtractDigitsToIntW(Block.GetParam('CanBeTreasure')) > 0);
-    CanBeReward :=
-        (Block.CountParams('CanBeReward') > 0)
-            and (ExtractDigitsToIntW(Block.GetParam('CanBeReward')) > 0);
+    CanBeABDrop := (Block.CountParams('CanBeABDrop') > 0) and (ExtractDigitsToIntW(Block.GetParam('CanBeABDrop')) > 0);
+    CanBeTreasure := (Block.CountParams('CanBeTreasure') > 0) and (ExtractDigitsToIntW(Block.GetParam('CanBeTreasure')) > 0);
+    CanBeReward := (Block.CountParams('CanBeReward') > 0) and (ExtractDigitsToIntW(Block.GetParam('CanBeReward')) > 0);
     if CanBeABDrop or CanBeTreasure or CanBeReward then
     begin
       ItemName := Config.GetBlockNameByIndex(Index);
       if CanBeABDrop then
       begin
-        UselessItemLootPools[0][ABDropCount] := ItemName;
+        UselessItemLootPools[ilpArcadeBattle][ABDropCount] := ItemName;
         Inc(ABDropCount);
       end;
       if CanBeTreasure then
       begin
-        UselessItemLootPools[1][TreasureCount] := ItemName;
+        UselessItemLootPools[ilpTreasure][TreasureCount] := ItemName;
         Inc(TreasureCount);
       end;
       if CanBeReward then
       begin
-        UselessItemLootPools[2][RewardCount] := ItemName;
+        UselessItemLootPools[ilpReward][RewardCount] := ItemName;
         Inc(RewardCount);
       end;
-      UselessItemLootPools[3][AnyCount] := ItemName;
+      UselessItemLootPools[ilpAnyAvailable][AnyCount] := ItemName;
       Inc(AnyCount);
     end;
   end;
@@ -3498,20 +3274,15 @@ var
   Skill: TPilotSkill;
 begin
   Block := LanguageDataConfig.GetBlockByPath('Asteroid');
-  AsteroidMinDamageFactor :=
-      StrToInt(AnsiString(Block.GetParam('kAsteroidMinDamagePercent'))) * 0.01;
-  AsteroidMaxDamageFactor :=
-      StrToInt(AnsiString(Block.GetParam('kAsteroidMaxDamagePercent'))) * 0.01;
-  AsteroidMinDamageFactorWithDefGenerator :=
-      StrToInt(AnsiString(Block.GetParam('kAsteroidMinDamagePercentDef'))) * 0.01;
-  AsteroidMaxDamageFactorWithDefGenerator :=
-      StrToInt(AnsiString(Block.GetParam('kAsteroidMaxDamagePercentDef'))) * 0.01;
+  AsteroidMinDamageFactor := StrToInt(AnsiString(Block.GetParam('kAsteroidMinDamagePercent'))) * 0.01;
+  AsteroidMaxDamageFactor := StrToInt(AnsiString(Block.GetParam('kAsteroidMaxDamagePercent'))) * 0.01;
+  AsteroidMinDamageFactorWithDefGenerator := StrToInt(AnsiString(Block.GetParam('kAsteroidMinDamagePercentDef'))) * 0.01;
+  AsteroidMaxDamageFactorWithDefGenerator := StrToInt(AnsiString(Block.GetParam('kAsteroidMaxDamagePercentDef'))) * 0.01;
   TotalSkillTrainingCost := 0;
   for Skill := Low(TPilotSkill) to High(TPilotSkill) do
   begin
     SkillTrainingCosts[0, Skill] := 0;
-    Values :=
-        LanguageDataConfig.GetBlockByPath('Skills.' + SkillConfigNames[Skill]).GetParam('Points');
+    Values := LanguageDataConfig.GetBlockByPath('Skills.' + SkillConfigNames[Skill]).GetParam('Points');
     for Level := 1 to 6 do
     begin
       Cost := StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - 1, ',')));
@@ -3521,28 +3292,18 @@ begin
   end;
   Values := LanguageDataConfig.GetBlockByPath('Quest').GetParam('QuestPoints');
   for QuestKind := Low(TQuestType) to High(TQuestType) do
-    QuestExperience[QuestKind] :=
-        StrToInt(
-            AnsiString(ExtractDelimitedPartW(Values, Ord(QuestKind) - Ord(Low(TQuestType)), ','))
-        );
+    QuestExperience[QuestKind] := StrToInt(AnsiString(ExtractDelimitedPartW(Values, Ord(QuestKind) - Ord(Low(TQuestType)), ',')));
   Values := LanguageDataConfig.GetBlockByPath('Quest').GetParam('QuestTurns');
   for QuestKind := Low(TQuestType) to High(TQuestType) do
-    QuestTuning[QuestKind].BaseDuration :=
-        StrToInt(
-            AnsiString(ExtractDelimitedPartW(Values, Ord(QuestKind) - Ord(Low(TQuestType)), ','))
-        );
+    QuestTuning[QuestKind].BaseDuration := StrToInt(AnsiString(ExtractDelimitedPartW(Values, Ord(QuestKind) - Ord(Low(TQuestType)), ',')));
   Values := LanguageDataConfig.GetBlockByPath('Quest').GetParam('QuestMoneyBase');
   for QuestKind := Low(TQuestType) to High(TQuestType) do
     QuestTuning[QuestKind].BaseRewardMoney :=
-        StrToInt(
-            AnsiString(ExtractDelimitedPartW(Values, Ord(QuestKind) - Ord(Low(TQuestType)), ','))
-        );
+        StrToInt(AnsiString(ExtractDelimitedPartW(Values, Ord(QuestKind) - Ord(Low(TQuestType)), ',')));
   Values := LanguageDataConfig.GetBlockByPath('Quest').GetParam('QuestMoneyPerc');
   for QuestKind := Low(TQuestType) to High(TQuestType) do
     QuestTuning[QuestKind].RewardCapitalPercent :=
-        StrToInt(
-            AnsiString(ExtractDelimitedPartW(Values, Ord(QuestKind) - Ord(Low(TQuestType)), ','))
-        );
+        StrToInt(AnsiString(ExtractDelimitedPartW(Values, Ord(QuestKind) - Ord(Low(TQuestType)), ',')));
   Block := LanguageDataConfig.GetBlockByPath('Items.Goods');
   GoodsInflationMin := ExtractDecimalToSingleW(Block.GetParam('kInflationMin'));
   GoodsInflationMax := ExtractDecimalToSingleW(Block.GetParam('kInflationMax'));
@@ -3572,8 +3333,7 @@ begin
   HullCapacityScale := HullBaseSize / 500;
   Values := Block.GetParam('mAlloy');
   for Level := Low(HullLevelStats) to High(HullLevelStats) do
-    HullLevelStats[Level].Armor :=
-        StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(HullLevelStats), ',')));
+    HullLevelStats[Level].Armor := StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(HullLevelStats), ',')));
   for DamageKind := Low(TWeaponDamageClass) to High(TWeaponDamageClass) do
   begin
     Values := Block.GetParam('mFragilityByLevel' + WeaponDamageClasses[DamageKind].Name);
@@ -3583,98 +3343,78 @@ begin
     Values := Block.GetParam('mFragilityByOwner' + WeaponDamageClasses[DamageKind].Name);
     for Owner := Low(TOwnerId) to High(TOwnerId) do
       HullFragilityByOwner[DamageKind, Owner] :=
-          ExtractDecimalToSingleW(
-              ExtractDelimitedPartW(Values, Ord(Owner) - Ord(Low(TOwnerId)), ',')
-          );
+          ExtractDecimalToSingleW(ExtractDelimitedPartW(Values, Ord(Owner) - Ord(Low(TOwnerId)), ','));
   end;
   Values := Block.GetParam('mFragilityByShipType');
   for HullKind := Low(HullFragilityByType) to High(HullFragilityByType) do
     HullFragilityByType[HullKind] :=
-        ExtractDecimalToSingleW(
-            ExtractDelimitedPartW(Values, Ord(HullKind) - Ord(Low(HullFragilityByType)), ',')
-        );
+        ExtractDecimalToSingleW(ExtractDelimitedPartW(Values, Ord(HullKind) - Ord(Low(HullFragilityByType)), ','));
   Block := LanguageDataConfig.GetBlockByPath('Items.FuelTanks');
   FuelTanksBaseSize := StrToInt(AnsiString(Block.GetParam('AverageSize')));
   Values := Block.GetParam('mCapacity');
   for Level := Low(FuelCapacityByLevel) to High(FuelCapacityByLevel) do
-    FuelCapacityByLevel[Level] :=
-        StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(FuelCapacityByLevel), ',')));
+    FuelCapacityByLevel[Level] := StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(FuelCapacityByLevel), ',')));
   Block := LanguageDataConfig.GetBlockByPath('Items.Engine');
   EngineBaseSize := StrToInt(AnsiString(Block.GetParam('AverageSize')));
   Values := Block.GetParam('mSpeed');
   for Level := Low(EngineLevelStats) to High(EngineLevelStats) do
-    EngineLevelStats[Level].Speed :=
-        StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(EngineLevelStats), ',')));
+    EngineLevelStats[Level].Speed := StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(EngineLevelStats), ',')));
   Values := Block.GetParam('mJump');
   for Level := Low(EngineLevelStats) to High(EngineLevelStats) do
-    EngineLevelStats[Level].JumpRange :=
-        StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(EngineLevelStats), ',')));
+    EngineLevelStats[Level].JumpRange := StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(EngineLevelStats), ',')));
   AfterburnerSpeedFactor := ExtractDecimalToSingleW(Block.GetParam('ForsageCoef'));
   Block := LanguageDataConfig.GetBlockByPath('Items.RepairRobot');
   RepairRobotBaseSize := StrToInt(AnsiString(Block.GetParam('AverageSize')));
   Values := Block.GetParam('mRepair');
   for Level := Low(RepairRobotLevelPoints) to High(RepairRobotLevelPoints) do
-    RepairRobotLevelPoints[Level] :=
-        StrToInt(
-            AnsiString(ExtractDelimitedPartW(Values, Level - Low(RepairRobotLevelPoints), ','))
-        );
+    RepairRobotLevelPoints[Level] := StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(RepairRobotLevelPoints), ',')));
   Block := LanguageDataConfig.GetBlockByPath('Items.DefGenerator');
   DefGeneratorBaseSize := StrToInt(AnsiString(Block.GetParam('AverageSize')));
   Values := Block.GetParam('mDef');
   for Level := Low(DefGeneratorLevelFactors) to High(DefGeneratorLevelFactors) do
     DefGeneratorLevelFactors[Level] :=
-        1
-            - ExtractDecimalToSingleW(
-                ExtractDelimitedPartW(Values, Level - Low(DefGeneratorLevelFactors), ','));
+        1 - ExtractDecimalToSingleW(ExtractDelimitedPartW(Values, Level - Low(DefGeneratorLevelFactors), ','));
   Block := LanguageDataConfig.GetBlockByPath('Items.Radar');
   RadarBaseSize := StrToInt(AnsiString(Block.GetParam('AverageSize')));
   Values := Block.GetParam('mRadius');
   for Level := Low(RadarLevelRanges) to High(RadarLevelRanges) do
-    RadarLevelRanges[Level] :=
-        StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(RadarLevelRanges), ',')));
+    RadarLevelRanges[Level] := StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(RadarLevelRanges), ',')));
   Block := LanguageDataConfig.GetBlockByPath('Items.Scaner');
   ScannerBaseSize := StrToInt(AnsiString(Block.GetParam('AverageSize')));
   Block := LanguageDataConfig.GetBlockByPath('Items.CargoHook');
   CargoHookBaseSize := StrToInt(AnsiString(Block.GetParam('AverageSize')));
   Values := Block.GetParam('mMass');
   for Level := Low(CargoHookLevelStats) to High(CargoHookLevelStats) do
-    CargoHookLevelStats[Level].PickupPower :=
-        StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(CargoHookLevelStats), ',')));
+    CargoHookLevelStats[Level].PickupPower := StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(CargoHookLevelStats), ',')));
   Values := Block.GetParam('mRadius');
   for Level := Low(CargoHookLevelStats) to High(CargoHookLevelStats) do
-    CargoHookLevelStats[Level].Range :=
-        StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(CargoHookLevelStats), ',')));
+    CargoHookLevelStats[Level].Range := StrToInt(AnsiString(ExtractDelimitedPartW(Values, Level - Low(CargoHookLevelStats), ',')));
   Values := Block.GetParam('mSpeedFar');
   for Level := Low(CargoHookLevelStats) to High(CargoHookLevelStats) do
     CargoHookLevelStats[Level].MinPullSpeed :=
-        ExtractDecimalToSingleW(
-            ExtractDelimitedPartW(Values, Level - Low(CargoHookLevelStats), ',')
-        );
+        ExtractDecimalToSingleW(ExtractDelimitedPartW(Values, Level - Low(CargoHookLevelStats), ','));
   Values := Block.GetParam('mSpeedClose');
   for Level := Low(CargoHookLevelStats) to High(CargoHookLevelStats) do
     CargoHookLevelStats[Level].MaxPullSpeed :=
-        ExtractDecimalToSingleW(
-            ExtractDelimitedPartW(Values, Level - Low(CargoHookLevelStats), ',')
-        );
+        ExtractDecimalToSingleW(ExtractDelimitedPartW(Values, Level - Low(CargoHookLevelStats), ','));
 end;
 
 procedure LoadWeaponConfiguration;
-const
-  WeaponTypes = [0..79] - [0..49, 68..79];
 var
   Level, Index: Integer;
   Block: TBlockParEC;
   Values: WideString;
-  Kind, DamageKind: Byte;
+  Kind: TItemType;
+  DamageKind: Byte;
 begin
-  for Index := 1 to CountItemTypesInMask(WeaponTypes) do
+  for Index := 1 to CountItemTypesInMask(StandardWeaponItemTypes) do
   begin
-    Kind := GetItemTypeFromMask(WeaponTypes, Index);
-    Block := LanguageDataConfig.GetBlockByPath('Items.Weapon.Stats.' + IntToStr(Kind + 1 - 50));
-    with WeaponInfos[TItemType(Kind)] do
+    Kind := GetItemTypeFromMask(StandardWeaponItemTypes, Index);
+    Block := LanguageDataConfig.GetBlockByPath('Items.Weapon.Stats.' + IntToStr(Ord(Kind) + 1 - 50));
+    with WeaponInfos[Kind] do
     begin
-      ItemType := TItemType(Kind);
-      ConfigName := ItemTypeNames[TItemType(Kind)];
+      ItemType := Kind;
+      ConfigName := ItemTypeNames[Kind];
       TechLevel := StrToInt(AnsiString(Block.GetParam('TechLevel')));
       CostFactor := ExtractDecimalToSingleW(Block.GetParam('kCost'));
       MinDamage := StrToInt(AnsiString(Block.GetParam('MinDamage')));
@@ -3687,7 +3427,7 @@ begin
       else
         SecondaryDamageRadius := 0;
       MiningFactor := StrToFloat(AnsiString(Block.GetParam('MiningFactor')));
-      ArcadeWeaponType := Kind;
+      ArcadeWeaponType := Ord(Kind);
       Availability := waFree;
       DamageFlags := [];
       Values := Block.GetParam('DamageSet');
@@ -3734,21 +3474,20 @@ begin
         MissileChanceToBeHit := StrToInt(AnsiString(Block.GetParam('MissileChanceToBeHit')));
       Values := Block.GetParam('mWeaponDamage');
       for Level := 1 to 8 do
-        DamageScaleByLevel[Level] :=
-            ExtractDecimalToSingleW(ExtractDelimitedPartW(Values, Level - 1, ','));
+        DamageScaleByLevel[Level] := ExtractDecimalToSingleW(ExtractDelimitedPartW(Values, Level - 1, ','));
     end;
   end;
-  for Level := 1 to CountItemTypesInMask(WeaponTypes) do
+  for Level := 1 to CountItemTypesInMask(StandardWeaponItemTypes) do
   begin
-    Kind := GetItemTypeFromMask(WeaponTypes, Level);
-    WeaponInfos[TItemType(Kind)].PrimarySE := 'Weapon.' + IntToStr(Kind - 50);
-    WeaponInfos[TItemType(Kind)].SecondarySE := 'Weapon.NoGraph';
-    if WeaponInfos[TItemType(Kind)].ShotType in [wstTorpedo, wstMissile, wstRocket] then
-      WeaponInfos[TItemType(Kind)].AreaSE := 'Weapon.MissileHit'
+    Kind := GetItemTypeFromMask(StandardWeaponItemTypes, Level);
+    WeaponInfos[Kind].PrimarySE := 'Weapon.' + IntToStr(Ord(Kind) - 50);
+    WeaponInfos[Kind].SecondarySE := 'Weapon.NoGraph';
+    if WeaponInfos[Kind].ShotType in [wstTorpedo, wstMissile, wstRocket] then
+      WeaponInfos[Kind].AreaSE := 'Weapon.MissileHit'
     else
-      WeaponInfos[TItemType(Kind)].AreaSE := '';
-    WeaponInfos[TItemType(Kind)].DefaultPalette := 0;
-    WeaponInfos[TItemType(Kind)].TypeHash := Kind * 171;
+      WeaponInfos[Kind].AreaSE := '';
+    WeaponInfos[Kind].DefaultPalette := 0;
+    WeaponInfos[Kind].TypeHash := Ord(Kind) * 171;
   end;
   WeaponInfos[t_Multiresonator].SecondarySE := 'Weapon.Nine';
   WeaponInfos[t_IMHO9000].SecondarySE := 'Weapon.12';
@@ -3780,14 +3519,13 @@ begin
 end;
 
 procedure LoadMicroModuleConfiguration;
-const
-  WeaponTypes = [0..79] - [0..49] - [68..79];
 var
   Block: TBlockParEC;
   Tokens: WideString;
   Index, Position, Part: Integer;
   Value, CustomName: WideString;
-  Kind, DamageKind: Byte;
+  Kind: TItemType;
+  DamageKind: Byte;
   BonusKind: TEquipmentBonusKind;
   DamageClass: TWeaponDamageClass;
   StationKind: TStationType;
@@ -3986,7 +3724,7 @@ begin
       Value := ReadMicroModuleParam('Equipments');
       if (Value = '') or (Value = 'Any') then
       begin
-        AllowedItemTypes := [Ord(t_Hull)..Ord(t_CustomWeapon)];
+        AllowedItemTypes := [t_Hull..t_CustomWeapon];
         AllowedCustomWeaponTypes := 'Any';
       end
       else
@@ -3996,40 +3734,31 @@ begin
         Tokens := ReplaceAllWideString(Value, ' ', '');
         Tokens := '<' + ReplaceAllWideString(Tokens, ',', '>,<') + '>';
         if ConsumeMicroModuleToken('<Hull>') then
-          Include(AllowedItemTypes, Ord(t_Hull));
+          Include(AllowedItemTypes, t_Hull);
         if ConsumeMicroModuleToken('<FuelTank>') then
-          Include(AllowedItemTypes, Ord(t_FuelTanks));
+          Include(AllowedItemTypes, t_FuelTanks);
         if ConsumeMicroModuleToken('<Engine>') then
-          Include(AllowedItemTypes, Ord(t_Engine));
+          Include(AllowedItemTypes, t_Engine);
         if ConsumeMicroModuleToken('<Radar>') then
-          Include(AllowedItemTypes, Ord(t_Radar));
+          Include(AllowedItemTypes, t_Radar);
         if ConsumeMicroModuleToken('<Scaner>') then
-          Include(AllowedItemTypes, Ord(t_Scaner));
+          Include(AllowedItemTypes, t_Scaner);
         if ConsumeMicroModuleToken('<Droid>') then
-          Include(AllowedItemTypes, Ord(t_RepairRobot));
+          Include(AllowedItemTypes, t_RepairRobot);
         if ConsumeMicroModuleToken('<Hook>') then
-          Include(AllowedItemTypes, Ord(t_CargoHook));
+          Include(AllowedItemTypes, t_CargoHook);
         if ConsumeMicroModuleToken('<DefGenerator>') then
-          Include(AllowedItemTypes, Ord(t_DefGenerator));
-        for Part := 1 to CountItemTypesInMask(WeaponTypes) do
+          Include(AllowedItemTypes, t_DefGenerator);
+        for Part := 1 to CountItemTypesInMask(StandardWeaponItemTypes) do
         begin
-          Kind :=
-              GetItemTypeFromMask(
-                  [Ord(t_Food)..79]
-                      - [Ord(t_Food)..Ord(t_DefGenerator)]
-                      - [Ord(t_CustomWeapon)..79],
-                  Part
-              );
-          if ConsumeMicroModuleToken('<' + ItemTypeNames[TItemType(Kind)] + '>') then
+          Kind := GetItemTypeFromMask(StandardWeaponItemTypes, Part);
+          if ConsumeMicroModuleToken('<' + ItemTypeNames[Kind] + '>') then
             Include(AllowedItemTypes, Kind)
-          else if (Pos('<WMissile>', Tokens) > 0)
-              and (dkMissile in WeaponInfos[TItemType(Kind)].DamageFlags) then
+          else if (Pos('<WMissile>', Tokens) > 0) and (dkMissile in WeaponInfos[Kind].DamageFlags) then
             Include(AllowedItemTypes, Kind)
-          else if (Pos('<WSplinter>', Tokens) > 0)
-              and (dkSplinter in WeaponInfos[TItemType(Kind)].DamageFlags) then
+          else if (Pos('<WSplinter>', Tokens) > 0) and (dkSplinter in WeaponInfos[Kind].DamageFlags) then
             Include(AllowedItemTypes, Kind)
-          else if (Pos('<WEnergy>', Tokens) > 0)
-              and (dkEnergy in WeaponInfos[TItemType(Kind)].DamageFlags) then
+          else if (Pos('<WEnergy>', Tokens) > 0) and (dkEnergy in WeaponInfos[Kind].DamageFlags) then
             Include(AllowedItemTypes, Kind);
         end;
         for Part := 0 to CountDelimitedPartsW(Tokens, ',') - 1 do
@@ -4119,8 +3848,7 @@ begin
   CaptainHealthDefinitions[heHolyFanaticism].Duration := 200;
 
   CaptainHealthDefinitions[heComplexImmunocide].AllowedLocationOwners := [oiMaloc..oiGaal];
-  CaptainHealthDefinitions[heComplexImmunocide].AllowedOwners :=
-      [oiPeleng, oiHuman, oiFeyan, oiGaal];
+  CaptainHealthDefinitions[heComplexImmunocide].AllowedOwners := [oiPeleng, oiHuman, oiFeyan, oiGaal];
   CaptainHealthDefinitions[heComplexImmunocide].AllowedRatingBands := [1, 2, 3, 4, 5];
   CaptainHealthDefinitions[heComplexImmunocide].AllowedRanks := [1, 2, 3, 4, 5, 6, 7];
   CaptainHealthDefinitions[heComplexImmunocide].AllowedCareers := [rcTrader, rcPirate, rcWarrior];
@@ -4163,8 +3891,7 @@ begin
   CaptainHealthDefinitions[heWhirlwindConcussion].Locations := [hlCombat];
   CaptainHealthDefinitions[heWhirlwindConcussion].Duration := 130;
 
-  CaptainHealthDefinitions[hePulledMuscle].AllowedLocationOwners :=
-      [oiPeleng, oiHuman, oiFeyan, oiGaal];
+  CaptainHealthDefinitions[hePulledMuscle].AllowedLocationOwners := [oiPeleng, oiHuman, oiFeyan, oiGaal];
   CaptainHealthDefinitions[hePulledMuscle].AllowedOwners := [oiPeleng, oiHuman, oiFeyan, oiGaal];
   CaptainHealthDefinitions[hePulledMuscle].AllowedRatingBands := [1, 2, 3, 4, 5];
   CaptainHealthDefinitions[hePulledMuscle].AllowedRanks := [1, 2, 3, 4, 5, 6, 7];
@@ -4362,7 +4089,7 @@ begin
         Duration := StrToInt(AnsiString(Value));
     end;
 
-  for I := 1 to 1 do
+  for I := Low(RadiationHealthDefinitions) to High(RadiationHealthDefinitions) do
     with RadiationHealthDefinitions[I] do
     begin
       Path := 'Illness.ExtraIllness.' + IntToStr(I);
@@ -4584,76 +4311,62 @@ end;
 
 function PickRandomItemType(Mask: TItemTypeSelection): Byte;
 var
-  ItemType: Byte;
+  ItemType: TItemType;
   Count: Integer;
 begin
-  Count := 0;
-  for ItemType := Ord(Low(TItemType)) to Ord(High(TItemType)) do
-    if ItemType in Mask then
-      Inc(Count);
+  Count := CountItemTypesInMask(Mask);
   Count := RandomIntRange(1, Count);
-  // Native $837BB3 advances past type 75 to 76 on exhaustion, even for an empty mask.
-  // A selected type breaks before that increment; keep the preceding RNG call.
-  ItemType := Ord(Low(TItemType));
-  while ItemType <= Ord(High(TItemType)) do
-  begin
+  Result := Ord(High(TItemType)) + 1;
+  for ItemType := Low(TItemType) to High(TItemType) do
     if ItemType in Mask then
     begin
       Dec(Count);
       if Count = 0 then
-        Break;
+      begin
+        Result := Ord(ItemType);
+        Exit;
+      end;
     end;
-    Inc(ItemType);
-  end;
-  Result := ItemType;
 end;
 
 function PickRandomItemTypeFromSeed(Mask: TItemTypeSelection; var Seed: Cardinal): Byte;
 var
-  ItemType: Byte;
+  ItemType: TItemType;
   Count: Integer;
 begin
-  Count := 0;
-  for ItemType := Ord(Low(TItemType)) to Ord(High(TItemType)) do
-    if ItemType in Mask then
-      Inc(Count);
+  Count := CountItemTypesInMask(Mask);
   Count := NextRandomIntRange(1, Count, Seed);
-  // Native $837C35 advances past type 75 to 76 on exhaustion, even for an empty mask.
-  // A selected type breaks before that increment; keep the preceding seeded RNG call.
-  ItemType := Ord(Low(TItemType));
-  while ItemType <= Ord(High(TItemType)) do
-  begin
+  Result := Ord(High(TItemType)) + 1;
+  for ItemType := Low(TItemType) to High(TItemType) do
     if ItemType in Mask then
     begin
       Dec(Count);
       if Count = 0 then
-        Break;
+      begin
+        Result := Ord(ItemType);
+        Exit;
+      end;
     end;
-    Inc(ItemType);
-  end;
-  Result := ItemType;
 end;
 
 function CountItemTypesInMask(Mask: TItemTypeSelection): Integer;
 var
-  ItemType: Byte;
-  Count: Integer;
+  ItemType: TItemType;
 begin
-  Count := 0;
-  for ItemType := Ord(Low(TItemType)) to Ord(High(TItemType)) do
+  Result := 0;
+  for ItemType := Low(TItemType) to High(TItemType) do
     if ItemType in Mask then
-      Inc(Count);
-  Result := Count;
+      Inc(Result);
 end;
 
-function GetItemTypeFromMask(Mask: TItemTypeSelection; Index: Integer): Byte;
+function GetItemTypeFromMask(Mask: TItemTypeSelection; Index: Integer): TItemType;
 var
-  ItemType: Byte;
+  ItemType: TItemType;
   Count: Integer;
 begin
   Count := 0;
-  Result := 0;
-  for ItemType := Ord(Low(TItemType)) to Ord(High(TItemType)) do
+  Result := t_Food;
+  for ItemType := Low(TItemType) to High(TItemType) do
   begin
     if ItemType in Mask then
       Inc(Count);

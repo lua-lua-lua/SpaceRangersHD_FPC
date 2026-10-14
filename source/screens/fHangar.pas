@@ -24,7 +24,7 @@ type
 
   THangarShipSlot = record
     AnimationState: Integer;
-    ShipId: Integer;
+    ShipId: Cardinal;
     ImageBuffer: TGraphBufGR;
     Opacity: Integer;
     ImageControl: TGraphBufGI;
@@ -66,12 +66,7 @@ type
     procedure AmbientAnimationComplete(Sender: TObjectGI);
     procedure StartAmbientAnimation(Timer: PCallbackTimerGI; UserData: PtrInt);
     function GetShipPortraitScale(Ship: TShip): Single;
-    procedure LoadDockedShipImage(
-        Index: Integer;
-        ImagePath: WideString;
-        LargeHull: Boolean;
-        Scale: Single
-    );
+    procedure LoadDockedShipImage(Index: Integer; ImagePath: WideString; LargeHull: Boolean; Scale: Single);
     procedure SetDockedShipOpacity(Index: Integer; Alpha: Byte);
     procedure AnimateDockedShips(Timer: PCallbackTimerGI; UserData: PtrInt);
     procedure RefreshDockedShips;
@@ -83,15 +78,13 @@ type
 
 const
 
-  HangarDominatorPortraitScales: array[TDominatorSeries] of array[TKlingType] of Single = (
-      (1.0, 1.1, 1.1, 0.7, 0.7, 0.3, 1.0, 0.5),
-      (1.0, 1.2, 0.9, 0.9, 0.8, 0.7, 1.0, 0.5),
-      (1.0, 1.1, 0.9, 0.7, 0.6, 0.5, 1.0, 0.5)
-  );
+  HangarDominatorPortraitScales: array[TDominatorSeries] of array[TKlingType] of Single =
+      ((1.0, 1.1, 1.1, 0.7, 0.7, 0.3, 1.0, 0.5), (1.0, 1.2, 0.9, 0.9, 0.8, 0.7, 1.0, 0.5), (1.0, 1.1, 0.9, 0.7, 0.6, 0.5, 1.0, 0.5));
 
 implementation
 
 uses
+  GameDiagnostics,
   fEquipmentShop,
   GameInput,
   Math,
@@ -147,7 +140,7 @@ begin
   PlanetPanel := TfPanelPlanet.Create;
   StationPanel := TfPanelRuins.Create;
   LoadPanel := TfPanelLoad.Create;
-  for I := 0 to 8 do
+  for I := Low(ShipSlots) to High(ShipSlots) do
     ShipSlots[I].ImageBuffer := TGraphBufGR.Create(False);
   SelectedShip := nil;
 end;
@@ -171,7 +164,7 @@ begin
     LoadPanel.Free;
     LoadPanel := nil;
   end;
-  for I := 0 to 8 do
+  for I := Low(ShipSlots) to High(ShipSlots) do
     if ShipSlots[I].ImageBuffer <> nil then
     begin
       ShipSlots[I].ImageBuffer.Free;
@@ -189,129 +182,48 @@ begin
   PlanetPanel.InitializeLayout(Self);
   StationPanel.InitializeLayout(Self);
   LoadPanel.InitializeLayout(Self);
-  AppendLogTextThreadSafe('fHangar... ');
+  LogGameMessage(gllDebug, 'ui', 'Initializing layout fHangar');
   ViewportRect := Classes.Rect(0, 0, GameScreenWidth, GameScreenHeight);
   with GetByName('MainPanel') do
   begin
     SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
     with FindByNameRecursive('AnimOpen') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('AnimRnd') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('AnimRepair') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('AnimFuel') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('Ship0') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('Ship1') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('Ship2') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('Ship3') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('Ship4') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('Ship5') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('Ship6') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('Ship7') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('Ship8') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     FindByNameRecursive('BGCity2').SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
     FindByNameRecursive('BGCity').SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
     with FindByNameRecursive('OpenImage') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('PanelUp') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
     with FindByNameRecursive('PanelDown') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + MainPanel.VerticalContentOffset
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + MainPanel.VerticalContentOffset));
   end;
-  AppendLogLineThreadSafe('ok');
   ShipInfoWindow := GetByName('InfoShip') as TWindowGI;
-  for I := 0 to 8 do
+  for I := Low(ShipSlots) to High(ShipSlots) do
     ShipSlots[I].ImageControl := GetByName('Ship' + IntToStr(I)) as TGraphBufGI;
   GetByName('MainPanel').MouseMoveCallback := MainMouseMove;
   GetByName('MainPanel').RightButtonDownCallback := MainRightButtonDown;
@@ -381,8 +293,7 @@ begin
     if GetPlayer.IsOnPlanet then
     begin
       SetActive(True);
-      (FindByNameRecursive('BGCity') as TImageGI)
-          .SetImagePath(GetPlayer.CurrentPlanet.GetGovernmentBackgroundGraph);
+      (FindByNameRecursive('BGCity') as TImageGI).SetImagePath(GetPlayer.CurrentPlanet.GetGovernmentBackgroundGraph);
     end
     else if GetPlayer.IsDockedToShip then
     begin
@@ -393,20 +304,10 @@ begin
         if CacheDataRoot.FileExistsByPath(Path) then
           SetImagePath('GI,' + Path)
         else
-          SetImagePath(
-              'GI,Bm.FormRuins.'
-                  + GiResourceSuffix
-                  + ShipTypeNames[GetPlayer.DockedTo.TypeId].Name
-                  + 'bg'
-          );
+          SetImagePath('GI,Bm.FormRuins.' + GiResourceSuffix + ShipTypeNames[GetPlayer.DockedTo.TypeId].Name + 'bg');
       end
       else
-        SetImagePath(
-            'GI,Bm.FormRuins.'
-                + GiResourceSuffix
-                + ShipTypeNames[GetPlayer.DockedTo.TypeId].Name
-                + 'bg'
-        );
+        SetImagePath('GI,Bm.FormRuins.' + GiResourceSuffix + ShipTypeNames[GetPlayer.DockedTo.TypeId].Name + 'bg');
     end
     else
       SetActive(False);
@@ -482,7 +383,7 @@ begin
     RestartPlayback;
   end;
   CaptureDispatcherMirror(nil);
-  for I := 0 to 8 do
+  for I := Low(ShipSlots) to High(ShipSlots) do
   begin
     ShipSlots[I].AnimationState := 0;
     ShipSlots[I].Opacity := 0;
@@ -511,7 +412,7 @@ begin
     ShipInfoHideTimer := nil;
   end;
   LoadPanel.OnClose;
-  for I := 0 to 8 do
+  for I := Low(ShipSlots) to High(ShipSlots) do
   begin
     (GetByName('Ship' + IntToStr(I)) as TGraphBufGI).GraphBuf.Clear;
     if ShipSlots[I].ImageBuffer <> nil then
@@ -560,11 +461,7 @@ begin
         GraphBuf.PitchBytes,
         0,
         0,
-        Pointer(
-            PtrInt(ScreenRenderBuffer.GetPixels)
-                + PtrInt(Position.X) * 2
-                + PtrInt(Position.Y) * ScreenRenderBuffer.PitchBytes
-        ),
+        Pointer(PtrInt(ScreenRenderBuffer.GetPixels) + PtrInt(Position.X) * 2 + PtrInt(Position.Y) * ScreenRenderBuffer.PitchBytes),
         ScreenRenderBuffer.PitchBytes,
         0,
         0,
@@ -791,8 +688,7 @@ end;
 
 procedure TfHangar.SelectMusic;
 begin
-  if ((ActiveLoadPanel <> nil) and (ActiveLoadPanel.GetShutterDirection = -1))
-      or TakeOffPending then
+  if ((ActiveLoadPanel <> nil) and (ActiveLoadPanel.GetShutterDirection = -1)) or TakeOffPending then
     Exit;
   if not MusicInPlanetEnabled then
   begin
@@ -804,17 +700,12 @@ begin
     if GetPlayer.CurrentPlanet.OwnerId = oiPirate then
     begin
       if not GetPlayer.CurrentPlanet.IsMainPiratePlanet then
-        MusicManager.PlayCategory(
-            'Nation.'
-                + OwnerInfo[RaceToOwner(GetPlayer.CurrentPlanet.RaceId)].InternalName
-                + 'Pirate'
-        )
+        MusicManager.PlayCategory('Nation.' + OwnerInfo[RaceToOwner(GetPlayer.CurrentPlanet.RaceId)].InternalName + 'Pirate')
       else
         MusicManager.PlayCategory('Nation.PiratePlanetMain');
     end
     else
-      MusicManager
-          .PlayCategory('Nation.' + OwnerInfo[GetPlayer.CurrentPlanet.OwnerId].InternalName);
+      MusicManager.PlayCategory('Nation.' + OwnerInfo[GetPlayer.CurrentPlanet.OwnerId].InternalName);
   end
   else if GetPlayer.IsDockedToShip then
   begin
@@ -824,13 +715,9 @@ begin
       Exit;
     end;
     if GetPlayer.DockedTo.TypeId in [rstPirateBase, rstDominion] then
-      MusicManager.PlayCategory(
-          'Nation.' + OwnerInfo[RaceToOwner(GetPlayer.DockedTo.PilotRace)].InternalName + 'Pirate'
-      )
+      MusicManager.PlayCategory('Nation.' + OwnerInfo[RaceToOwner(GetPlayer.DockedTo.PilotRace)].InternalName + 'Pirate')
     else
-      MusicManager.PlayCategory(
-          'Nation.' + OwnerInfo[RaceToOwner(GetPlayer.DockedTo.PilotRace)].InternalName
-      );
+      MusicManager.PlayCategory('Nation.' + OwnerInfo[RaceToOwner(GetPlayer.DockedTo.PilotRace)].InternalName);
   end;
 end;
 
@@ -906,11 +793,7 @@ begin
     Galaxy.CheckIntegrityChecksum(217);
     Inc(
         GetPlayer.GetHull.HullPoints,
-        Round(
-            GetPlayer.Money
-                / GetPlayer.GetHull.CalculateRepairCost
-                * (GetPlayer.GetHull.Weight - GetPlayer.GetHull.HullPoints)
-        )
+        Round(GetPlayer.Money / GetPlayer.GetHull.CalculateRepairCost * (GetPlayer.GetHull.Weight - GetPlayer.GetHull.HullPoints))
     );
     GetPlayer.SetMoney(0);
     Galaxy.PrimeIntegrityChecksum(218);
@@ -1162,8 +1045,7 @@ begin
     CancelCallbackTimer(AmbientAnimationTimer);
     AmbientAnimationTimer := nil;
   end;
-  AmbientAnimationTimer :=
-      ScheduleCallbackTimer(RandomIntRange(2000, 4000), 1, StartAmbientAnimation);
+  AmbientAnimationTimer := ScheduleCallbackTimer(RandomIntRange(2000, 4000), 1, StartAmbientAnimation);
 end;
 
 procedure TfHangar.StartAmbientAnimation(Timer: PCallbackTimerGI; UserData: PtrInt);
@@ -1194,18 +1076,12 @@ begin
   if Ship.ChameleonActive then
     Result := HangarDominatorPortraitScales[Ship.ChameleonSeries, Ship.ChameleonVisualType]
   else if Ship is TKling then
-    Result :=
-        HangarDominatorPortraitScales[(Ship as TKling).DominatorSeries, (Ship as TKling).KlingType]
+    Result := HangarDominatorPortraitScales[(Ship as TKling).DominatorSeries, (Ship as TKling).KlingType]
   else
     Result := 1.0;
 end;
 
-procedure TfHangar.LoadDockedShipImage(
-    Index: Integer;
-    ImagePath: WideString;
-    LargeHull: Boolean;
-    Scale: Single
-);
+procedure TfHangar.LoadDockedShipImage(Index: Integer; ImagePath: WideString; LargeHull: Boolean; Scale: Single);
 var
   Width: Integer;
 begin
@@ -1213,10 +1089,7 @@ begin
   begin
     SetActive(True);
     SourceHasPerPixelAlpha := True;
-    LoadGiByPathIntoGraphBuf(
-        ExtractDelimitedPartW(ImagePath, 1, ','),
-        ShipSlots[Index].ImageBuffer
-    );
+    LoadGiByPathIntoGraphBuf(ExtractDelimitedPartW(ImagePath, 1, ','), ShipSlots[Index].ImageBuffer);
     if Index <= 0 then
       Width := GiScalePixels(128)
     else if Index <= 3 then
@@ -1226,16 +1099,10 @@ begin
     if LargeHull then
       Inc(Width, Width div 2);
     Width := Round(Width * Scale);
-    if (ShipSlots[Index].ImageBuffer.Width > Width)
-        or (ShipSlots[Index].ImageBuffer.Height > Width) then
+    if (ShipSlots[Index].ImageBuffer.Width > Width) or (ShipSlots[Index].ImageBuffer.Height > Width) then
       ShipSlots[Index]
           .ImageBuffer
-          .RescaleRgba(
-              Width,
-              Round(
-                  Width * ShipSlots[Index].ImageBuffer.Height / ShipSlots[Index].ImageBuffer.Width
-              ),
-              5);
+          .RescaleRgba(Width, Round(Width * ShipSlots[Index].ImageBuffer.Height / ShipSlots[Index].ImageBuffer.Width), 5);
     SetOrigin(ShipSlots[Index].ImageBuffer.GetPixelCentroid);
     SetSize(Classes.Point(ShipSlots[Index].ImageBuffer.Width, ShipSlots[Index].ImageBuffer.Height));
     SetImageKindX(ikxLeft);
@@ -1247,17 +1114,13 @@ procedure TfHangar.SetDockedShipOpacity(Index: Integer; Alpha: Byte);
 begin
   with GetByName('Ship' + IntToStr(Index)) as TGraphBufGI do
   begin
-    GraphBuf
-        .AllocateRgbaTight(ShipSlots[Index].ImageBuffer.Width, ShipSlots[Index].ImageBuffer.Height);
+    GraphBuf.AllocateRgbaTight(ShipSlots[Index].ImageBuffer.Width, ShipSlots[Index].ImageBuffer.Height);
     GraphBuf.CopyRect32(
         Classes.Point(0, 0),
         ShipSlots[Index].ImageBuffer,
         Classes.Rect(0, 0, ShipSlots[Index].ImageBuffer.Width, ShipSlots[Index].ImageBuffer.Height)
     );
-    GraphBuf.ScaleAlpha(
-        Classes.Rect(0, 0, ShipSlots[Index].ImageBuffer.Width, ShipSlots[Index].ImageBuffer.Height),
-        Alpha
-    );
+    GraphBuf.ScaleAlpha(Classes.Rect(0, 0, ShipSlots[Index].ImageBuffer.Width, ShipSlots[Index].ImageBuffer.Height), Alpha);
     Invalidate;
   end;
 end;
@@ -1266,7 +1129,7 @@ procedure TfHangar.AnimateDockedShips(Timer: PCallbackTimerGI; UserData: PtrInt)
 var
   I: Integer;
 begin
-  for I := 0 to 8 do
+  for I := Low(ShipSlots) to High(ShipSlots) do
     if ShipSlots[I].AnimationState = 1 then
     begin
       Inc(ShipSlots[I].Opacity, 10);
@@ -1302,7 +1165,7 @@ var
 begin
   if IsTurnCalculationRunning then
     WaitForTurnCalculation;
-  for I := 0 to 8 do
+  for I := Low(ShipSlots) to High(ShipSlots) do
     if ShipSlots[I].AnimationState = 2 then
     begin
       Ship := TShip(Galaxy.IdToShip(ShipSlots[I].ShipId, False));
@@ -1314,7 +1177,7 @@ begin
         ShipSlots[I].Opacity := 255;
       end;
     end;
-  for I := 1 to 8 do
+  for I := 1 to High(ShipSlots) do
     if (ShipSlots[I].AnimationState = 0) and (ShipSlots[I].ShipId <> 0) then
     begin
       Ship := TShip(Galaxy.IdToShip(ShipSlots[I].ShipId, False));
@@ -1326,7 +1189,7 @@ begin
         else
         begin
           K := 0;
-          while K <= 8 do
+          while K <= High(ShipSlots) do
           begin
             if (ShipSlots[K].AnimationState <> 0) and (ShipSlots[K].ShipId = Ship.Id) then
             begin
@@ -1350,7 +1213,7 @@ begin
       LoadDockedShipImage(I, Path, LargeHull, GetShipPortraitScale(Ship));
       SetDockedShipOpacity(I, ShipSlots[I].Opacity);
     end;
-  for I := 0 to 8 do
+  for I := Low(SlotOrder) to High(SlotOrder) do
     SlotOrder[I] := I;
   for I := 0 to 10 do
   begin
@@ -1360,7 +1223,7 @@ begin
     SlotOrder[J] := SlotOrder[K];
     SlotOrder[K] := Swap;
   end;
-  for I := 0 to 8 do
+  for I := Low(ShipSlots) to High(ShipSlots) do
     if ShipSlots[SlotOrder[I]].AnimationState = 0 then
     begin
       Ship := nil;
@@ -1372,7 +1235,7 @@ begin
         begin
           for J := 0 to GetPlayer.CurrentStar.Ships.Count - 1 do
           begin
-            Ship := TShip(GetPlayer.CurrentStar.Ships[J]);
+            Ship := GetPlayer.CurrentStar.Ships[J];
             if GetPlayer = Ship then
               Ship := nil
             else if GetPlayer.CurrentPlanet <> Ship.CurrentPlanet then
@@ -1380,13 +1243,13 @@ begin
             else
             begin
               K := 0;
-              while K <= 8 do
+              while K <= High(ShipSlots) do
               begin
                 if (ShipSlots[K].AnimationState <> 0) and (ShipSlots[K].ShipId = Ship.Id) then
                   Break;
                 Inc(K);
               end;
-              if K > 8 then
+              if K > High(ShipSlots) then
                 Break;
               Ship := nil;
             end;
@@ -1394,19 +1257,19 @@ begin
           if Ship = nil then
             for J := 0 to GetPlayer.CurrentPlanet.Warriors.Count - 1 do
             begin
-              Ship := TShip(GetPlayer.CurrentPlanet.Warriors[J]);
+              Ship := GetPlayer.CurrentPlanet.Warriors[J];
               if GetPlayer.CurrentPlanet <> Ship.CurrentPlanet then
                 Ship := nil
               else
               begin
                 K := 0;
-                while K <= 8 do
+                while K <= High(ShipSlots) do
                 begin
                   if (ShipSlots[K].AnimationState <> 0) and (ShipSlots[K].ShipId = Ship.Id) then
                     Break;
                   Inc(K);
                 end;
-                if K > 8 then
+                if K > High(ShipSlots) then
                   Break;
                 Ship := nil;
               end;
@@ -1415,7 +1278,7 @@ begin
         else if GetPlayer.IsDockedToShip then
           for J := 0 to GetPlayer.CurrentStar.Ships.Count - 1 do
           begin
-            Ship := TShip(GetPlayer.CurrentStar.Ships[J]);
+            Ship := GetPlayer.CurrentStar.Ships[J];
             if GetPlayer = Ship then
               Ship := nil
             else if GetPlayer.DockedTo <> Ship.DockedTo then
@@ -1423,13 +1286,13 @@ begin
             else
             begin
               K := 0;
-              while K <= 8 do
+              while K <= High(ShipSlots) do
               begin
                 if (ShipSlots[K].AnimationState <> 0) and (ShipSlots[K].ShipId = Ship.Id) then
                   Break;
                 Inc(K);
               end;
-              if K > 8 then
+              if K > High(ShipSlots) then
                 Break;
               Ship := nil;
             end;
@@ -1460,7 +1323,7 @@ begin
   if (Galaxy = nil) or (GetPlayer = nil) or GetPlayer.IsHullDestroyed then
     Exit;
   CursorPoint := GetCursorPoint;
-  for I := 0 to 8 do
+  for I := Low(ShipSlots) to High(ShipSlots) do
   begin
     Ship := TShip(Galaxy.IdToShip(ShipSlots[I].ShipId, False));
     if (Ship <> nil) and ShipSlots[I].ImageControl.HitTestPixel(CursorPoint) then
@@ -1470,10 +1333,7 @@ begin
       begin
         with ShipSlots[I].ImageControl do
           ShipInfoWindow.SetPosition(
-              Classes.Point(
-                  HitTestBounds.Left + ClientSize.X div 2 - ShipInfoWindow.ClientSize.X div 2,
-                  HitTestBounds.Top + ClientSize.Y
-              )
+              Classes.Point(HitTestBounds.Left + ClientSize.X div 2 - ShipInfoWindow.ClientSize.X div 2, HitTestBounds.Top + ClientSize.Y)
           );
       end
       else
@@ -1498,13 +1358,10 @@ var
   CursorPoint: TPoint;
 begin
   CursorPoint := GetCursorPoint;
-  for I := 0 to 8 do
+  for I := Low(ShipSlots) to High(ShipSlots) do
   begin
     Ship := TShip(Galaxy.IdToShip(ShipSlots[I].ShipId, False));
-    if (Ship <> nil)
-        and ShipSlots[I].ImageControl.HitTestPixel(CursorPoint)
-        and (Ship.TypeId <> stKling)
-        and not Ship.NoScan then
+    if (Ship <> nil) and ShipSlots[I].ImageControl.HitTestPixel(CursorPoint) and (Ship.TypeId <> stKling) and not Ship.NoScan then
     begin
       if GetPlayer = Ship then
       begin
@@ -1572,16 +1429,13 @@ begin
   Ship.ScriptItemsAct(satOnShowingShipInfo, nil, nil, 0);
   if GetPlayer <> Ship then
   begin
-    (GetByName('InfoShipName') as TLabelGI)
-        .SetText(WrapTextInColor(Ship.GetFullName(' '), InfoNameColorTag));
+    (GetByName('InfoShipName') as TLabelGI).SetText(WrapTextInColor(Ship.GetFullName(' '), InfoNameColorTag));
     if (Ship <> nil) and (GetPlayer = Ship.PartnerShip) then
       (GetByName('InfoShipName') as TLabelGI)
           .SetText(
               (GetByName('InfoShipName') as TLabelGI).GetText
                   + #13#10
-                  + WrapTextInColor(
-                      LookupLocalizedTextByKey('FormInfo.Partner'),
-                      TextHighlightColorTag));
+                  + WrapTextInColor(LookupLocalizedTextByKey('FormInfo.Partner'), TextHighlightColorTag));
     if (Ship is TKling)
         and ((Ship as TKling).ActiveProgramAppliedTurn > 0)
         and ((Ship as TKling).ActiveProgramId in [prgShipwreck..prgDisconnection]) then
@@ -1590,19 +1444,15 @@ begin
               (GetByName('InfoShipName') as TLabelGI).GetText
                   + #13#10
                   + WrapTextInColor(
-                      LocalizedText(
-                          'Programms.'
-                              + ProgramNames[(Ship as TKling).ActiveProgramId]
-                              + '.AddToShipInfo'
-                      ),
+                      LocalizedText('Programms.' + ProgramNames[(Ship as TKling).ActiveProgramId] + '.AddToShipInfo'),
                       RedColorTag));
-    if (Ship is TRanger) and (Cardinal((Ship as TRanger).PrisonTermRemaining) > 0) then
+    if (Ship is TRanger) and ((Ship as TRanger).PrisonTermRemaining > 0) then
       (GetByName('InfoShipName') as TLabelGI)
           .SetText(
               (GetByName('InfoShipName') as TLabelGI).GetText
                   + #13#10
                   + WrapTextInColor(LocalizedColorText('FormHangar.Prison'), RedColorTag))
-    else if (Ship is TPirate) and (Cardinal((Ship as TPirate).PrisonTermRemaining) > 0) then
+    else if (Ship is TPirate) and ((Ship as TPirate).PrisonTermRemaining > 0) then
       (GetByName('InfoShipName') as TLabelGI)
           .SetText(
               (GetByName('InfoShipName') as TLabelGI).GetText
@@ -1610,8 +1460,7 @@ begin
                   + WrapTextInColor(LocalizedColorText('FormHangar.Prison'), RedColorTag));
   end
   else
-    (GetByName('InfoShipName') as TLabelGI)
-        .SetText(WrapTextInColor(Ship.GetFullName(' '), InfoNameColorTag));
+    (GetByName('InfoShipName') as TLabelGI).SetText(WrapTextInColor(Ship.GetFullName(' '), InfoNameColorTag));
   if Ship.GetFactionNameKey <> 'None' then
   begin
     with GetByName('InfoShipEmRace') as TImageGI do
@@ -1636,17 +1485,9 @@ begin
         LoadGiByPathIntoGraphBuf(ExtractDelimitedPartW(Path, 1, ','), GraphBuf);
         if (ClientSize.X < GraphBuf.Width) or (ClientSize.Y < GraphBuf.Height) then
           if Cardinal(GraphBuf.Width) >= Cardinal(GraphBuf.Height) then
-            GraphBuf.RescaleRgba(
-                ClientSize.X,
-                Round(ClientSize.X / Cardinal(GraphBuf.Width) * Cardinal(GraphBuf.Height)),
-                5
-            )
+            GraphBuf.RescaleRgba(ClientSize.X, Round(ClientSize.X / Cardinal(GraphBuf.Width) * Cardinal(GraphBuf.Height)), 5)
           else
-            GraphBuf.RescaleRgba(
-                Round(ClientSize.Y / Cardinal(GraphBuf.Height) * Cardinal(GraphBuf.Width)),
-                ClientSize.Y,
-                5
-            );
+            GraphBuf.RescaleRgba(Round(ClientSize.Y / Cardinal(GraphBuf.Height) * Cardinal(GraphBuf.Width)), ClientSize.Y, 5);
         SetImageKindX(ikxCenter);
         SetImageKindY(ikyCenter);
         SetPosition(SubtractPoints(ShipScreen.ItemImageCenter, GetVisualCenter));
@@ -1660,28 +1501,14 @@ begin
       SetActive(True);
       SourceHasPerPixelAlpha := True;
       if (TerronShip = Ship) and (Galaxy.TerronToStarTurn >= TerronTransformationFlag) then
-        LoadGiByPathIntoGraphBuf(
-            ExtractDelimitedPartW(TStarSE(TerronShip.CurrentStar.Graphic).StaticImagePath, 1, ','),
-            GraphBuf
-        )
+        LoadGiByPathIntoGraphBuf(ExtractDelimitedPartW(TStarSE(TerronShip.CurrentStar.Graphic).StaticImagePath, 1, ','), GraphBuf)
       else
-        LoadGiByPathIntoGraphBuf(
-            ExtractDelimitedPartW((Ship.Graphic as TRuinsSE).StaticImagePath, 1, ','),
-            GraphBuf
-        );
+        LoadGiByPathIntoGraphBuf(ExtractDelimitedPartW((Ship.Graphic as TRuinsSE).StaticImagePath, 1, ','), GraphBuf);
       if (ClientSize.X < GraphBuf.Width) or (ClientSize.Y < GraphBuf.Height) then
         if Cardinal(GraphBuf.Width) >= Cardinal(GraphBuf.Height) then
-          GraphBuf.RescaleRgba(
-              ClientSize.X,
-              Round(ClientSize.X / Cardinal(GraphBuf.Width) * Cardinal(GraphBuf.Height)),
-              5
-          )
+          GraphBuf.RescaleRgba(ClientSize.X, Round(ClientSize.X / Cardinal(GraphBuf.Width) * Cardinal(GraphBuf.Height)), 5)
         else
-          GraphBuf.RescaleRgba(
-              Round(ClientSize.Y / Cardinal(GraphBuf.Height) * Cardinal(GraphBuf.Width)),
-              ClientSize.Y,
-              5
-          );
+          GraphBuf.RescaleRgba(Round(ClientSize.Y / Cardinal(GraphBuf.Height) * Cardinal(GraphBuf.Width)), ClientSize.Y, 5);
       SetPosition(SubtractPoints(ShipScreen.ItemImageCenter, GetVisualCenter));
     end;
   end;
@@ -1710,10 +1537,7 @@ begin
       or (GetPlayer = Ship.PartnerShip)
       or (Ship.TypeId = stTranclucator) then
   begin
-    Text :=
-        WrapTextInColor(IntToStr(Ship.GetHull.HullPoints), ColorTag)
-            + '/'
-            + IntToStr(Ship.GetHull.Weight);
+    Text := WrapTextInColor(IntToStr(Ship.GetHull.HullPoints), ColorTag) + '/' + IntToStr(Ship.GetHull.Weight);
     if GetPlayer.HasScannerArtefact(Ship) then
     begin
       (GetByName('InfoShipDamage') as TLabelGI).SetText(Ship.GetWeaponDamageSummary);
@@ -1742,29 +1566,19 @@ begin
   begin
     (GetByName('ISWin') as TLabelGI).SetActive(True);
     (GetByName('InfoShipWin') as TLabelGI).SetActive(True);
-    (GetByName('InfoShipWin') as TLabelGI)
-        .SetText(IntToStr(GetPlayer.GetWinChancePercent(Ship)) + '%');
+    (GetByName('InfoShipWin') as TLabelGI).SetText(IntToStr(GetPlayer.GetWinChancePercent(Ship)) + '%');
   end
   else
   begin
     (GetByName('ISWin') as TLabelGI).SetActive(False);
     (GetByName('InfoShipWin') as TLabelGI).SetActive(False);
   end;
-  BarWidth :=
-      Round(
-          Sqrt(Ship.GetHull.Weight / HullBaseSize / Max(0.1, Ship.GetHull.GetFragilityFactor([])))
-              * 64
-      );
+  BarWidth := Round(Sqrt(Ship.GetHull.Weight / HullBaseSize / Max(0.1, Ship.GetHull.GetFragilityFactor([]))) * 64);
   BarWidth := Min(192, Max(32, BarWidth));
   with GetByName('InfoShipDurableLeft') as TImageGI do
   begin
     CapWidth := GetContentSize.X;
-    MinimumWidth :=
-        2 * CapWidth
-            + BarWidth
-            + LocalPosition.X
-            + Parent.LocalPosition.X
-            + 2 * Parent.Parent.LocalPosition.X;
+    MinimumWidth := 2 * CapWidth + BarWidth + LocalPosition.X + Parent.LocalPosition.X + 2 * Parent.Parent.LocalPosition.X;
   end;
   with GetByName('InfoShipDurable') as TImageGI do
   begin
@@ -1772,13 +1586,7 @@ begin
         or (GetPlayer = Ship)
         or (GetPlayer = Ship.PartnerShip)
         or (Ship.TypeId = stTranclucator) then
-      SetPosition(
-          Classes.Point(
-              Round(Ship.GetHull.HullPoints / Ship.GetHull.Weight * BarWidth)
-                  - (GetContentSize.X - 5),
-              LocalPosition.Y
-          )
-      )
+      SetPosition(Classes.Point(Round(Ship.GetHull.HullPoints / Ship.GetHull.Weight * BarWidth) - (GetContentSize.X - 5), LocalPosition.Y))
     else
     begin
       MinimumWidth := MinimumWidth - BarWidth + 64;
@@ -1845,8 +1653,7 @@ begin
   if not LoadPanel.IsAnimatingShutters
       and not MainPanel.NavigationLocked
       and not ExitScreenLoop
-      and (TurnCalculationPhase
-          in [tcpIdle, tcpGalaxyFinished, tcpPlayerStarFinished, tcpPlayerStarPrepared]) then
+      and (TurnCalculationPhase in [tcpIdle, tcpGalaxyFinished, tcpPlayerStarFinished, tcpPlayerStarPrepared]) then
   begin
     Galaxy.CheckIntegrityChecksum(10000);
     ExecuteGameplayUiCode(Block, Key);

@@ -18,7 +18,7 @@ type
 
   PSPathNode = PointerToTSPathNode;
 
-  TSPathNode = packed record
+  TSPathNode = record
     Prev: PSPathNode;
     Next: PSPathNode;
     Position: TPointF;
@@ -45,11 +45,7 @@ type
     function FindNearestFollowingNode(Node: PSPathNode; Position: TPointF): PSPathNode;
     function GetLength: Single;
     function CountNodeRangeInclusive(FirstNode: PSPathNode; LastNode: PSPathNode): Integer;
-    procedure ResampleBezierRange(
-        FirstNode: PSPathNode;
-        LastNode: PSPathNode;
-        SampleCount: Integer
-    );
+    procedure ResampleBezierRange(FirstNode: PSPathNode; LastNode: PSPathNode; SampleCount: Integer);
   end;
 
 var
@@ -85,6 +81,11 @@ uses
   GR_Main,
   SysUtils;
 
+const
+  InitialPathNodeCapacity = 200000;
+  PathNodeGrowthCount = 100000;
+  NodesPerPathAllocation = 24;
+
 var
   PathInitialBlock: Pointer;
   PathPoolFreeCount: Integer;
@@ -96,7 +97,7 @@ var
   Node, Prev: PSPathNode;
 begin
   PathPoolLock := TCriticalSection.Create;
-  PathPoolFreeCount := 200000;
+  PathPoolFreeCount := InitialPathNodeCapacity;
   PathNodeHeap := GameHeap.HeapCreate(0, 16, 0);
   PathInitialBlock := GameHeap.HeapAlloc(PathNodeHeap, 0, PathPoolFreeCount * SizeOf(TSPathNode));
   if PathInitialBlock = nil then
@@ -164,7 +165,7 @@ begin
     Exit;
   if not ReservePathGrowthBlock then
     Exit;
-  Count := 100000;
+  Count := PathNodeGrowthCount;
   Inc(PathPoolFreeCount, Count);
   ByteCount := Count * SizeOf(TSPathNode);
   Block := GameHeap.HeapAlloc(PathNodeHeap, GameHeap.HEAP_ZERO_MEMORY, ByteCount);
@@ -236,7 +237,7 @@ var
   First, Last: PSPathNode;
   Count: Integer;
 begin
-  Count := 24;
+  Count := NodesPerPathAllocation;
   PathPoolLock.Enter;
   if Count >= PathPoolFreeCount then
     if not GrowPathNodePool then
@@ -467,8 +468,7 @@ begin
   Coefficients[Count - 1] := BezierWide(1);
   for Index := 1 to (Count - 1) div 2 do
   begin
-    Coefficients[Index] :=
-        BezierDiv(BezierMul(BezierWide(Count - Index), Coefficients[Index - 1]), BezierWide(Index));
+    Coefficients[Index] := BezierDiv(BezierMul(BezierWide(Count - Index), Coefficients[Index - 1]), BezierWide(Index));
     Coefficients[Count - 1 - Index] := Coefficients[Index];
   end;
   Heading := FirstNode.Heading;

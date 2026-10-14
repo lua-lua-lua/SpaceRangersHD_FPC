@@ -41,6 +41,7 @@ type
 implementation
 
 uses
+  GameDiagnostics,
   GI_MessageBox,
   aGalaxyStruct,
   SysUtils,
@@ -86,7 +87,7 @@ end;
 procedure TfGameLoad.InitializeLayout;
 begin
   inherited;
-  AppendLogTextThreadSafe('fGameLoad... ');
+  LogGameMessage(gllDebug, 'ui', 'Initializing layout fGameLoad');
   ViewportRect :=
       Classes.Rect(
           ExtraScreenWidth div 2,
@@ -95,7 +96,6 @@ begin
           ViewportRect.Top + ExtraScreenHeight div 2
       );
   GetByName('PanelLoad').Parent.SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
-  AppendLogLineThreadSafe('ok');
   LoadPanel.InitializeLayout(Self);
 end;
 
@@ -116,8 +116,8 @@ begin
     Galaxy.Free;
   Galaxy := nil;
   AssetPreloadStarted := False;
-  LoadThread := TThreadGameLoad.Create;
-  LoadThread.SetPriority(2);
+  LoadThread := TThreadGameLoad.Create('game-loader');
+  LoadThread.SetPriority(ThreadPriorityBelowNormal);
   LoadThread.Start;
   ProgressTimer := ScheduleCallbackTimer(20, 20, UpdateLoadingProgress);
   LoadPanel.SetProgress(0);
@@ -147,17 +147,12 @@ begin
       if GetPlayer.CurrentPlanet.OwnerId = oiPirate then
       begin
         if not GetPlayer.CurrentPlanet.IsMainPiratePlanet then
-          MusicManager.PlayCategory(
-              'Nation.'
-                  + OwnerInfo[RaceToOwner(GetPlayer.CurrentPlanet.RaceId)].InternalName
-                  + 'Pirate'
-          )
+          MusicManager.PlayCategory('Nation.' + OwnerInfo[RaceToOwner(GetPlayer.CurrentPlanet.RaceId)].InternalName + 'Pirate')
         else
           MusicManager.PlayCategory('Nation.PiratePlanetMain');
       end
       else
-        MusicManager
-            .PlayCategory('Nation.' + OwnerInfo[GetPlayer.CurrentPlanet.OwnerId].InternalName);
+        MusicManager.PlayCategory('Nation.' + OwnerInfo[GetPlayer.CurrentPlanet.OwnerId].InternalName);
     end
     else if GetPlayer.IsDockedToShip then
     begin
@@ -173,14 +168,9 @@ begin
       begin
         // Retain the native CurrentPlanet lookup in this non-station docking branch.
         if GetPlayer.CurrentPlanet.OwnerId = oiPirate then
-          MusicManager.PlayCategory(
-              'Nation.'
-                  + OwnerInfo[RaceToOwner(GetPlayer.CurrentPlanet.RaceId)].InternalName
-                  + 'Pirate'
-          )
+          MusicManager.PlayCategory('Nation.' + OwnerInfo[RaceToOwner(GetPlayer.CurrentPlanet.RaceId)].InternalName + 'Pirate')
         else
-          MusicManager
-              .PlayCategory('Nation.' + OwnerInfo[GetPlayer.CurrentPlanet.OwnerId].InternalName);
+          MusicManager.PlayCategory('Nation.' + OwnerInfo[GetPlayer.CurrentPlanet.OwnerId].InternalName);
       end;
     end
     else if GetPlayer.InNormalSpace then
@@ -249,11 +239,7 @@ begin
         end;
       end
       else
-        ShowMessageBoxGI(
-            Self,
-            LanguageDataConfig.GetParamByPathOrMarker('FormSaveManager.LoadError'),
-            mbgOK or mbgError
-        );
+        ShowMessageBoxGI(Self, LanguageDataConfig.GetParamByPathOrMarker('FormSaveManager.LoadError'), mbgOK or mbgError);
       RequestedScreenId := screenMainMenu;
       ApplyEditableSaveOnLoad := False;
       RequestClose(1);

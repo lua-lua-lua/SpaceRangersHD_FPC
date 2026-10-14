@@ -104,6 +104,7 @@ type
 implementation
 
 uses
+  GameDiagnostics,
   GI_Main,
   aKling,
   SysUtils,
@@ -115,7 +116,6 @@ uses
   GlobalsV,
   Globals,
   aGalaxy,
-  SimpleSteamApi,
   aConst,
   aMyFunction,
   aRanger,
@@ -287,15 +287,8 @@ begin
   Difficulty := DifficultyPercent;
   if VictoryAchieved then
   begin
-    TotalScore :=
-        Round(
-            Experience
-                * Difficulty
-                / 100
-                / Power(Max(7, (FinishedTurn - GalaxyWarmupTurns) / TurnsPerYear), 1.3)
-        );
-    DominatorsResolved :=
-        (TerronEndingState <> 0) and (KellerEndingState <> 0) and (BlazerEndingState <> 0);
+    TotalScore := Round(Experience * Difficulty / 100 / Power(Max(7, (FinishedTurn - GalaxyWarmupTurns) / TurnsPerYear), 1.3));
+    DominatorsResolved := (TerronEndingState <> 0) and (KellerEndingState <> 0) and (BlazerEndingState <> 0);
     PirateResolved := (PirateRank >= 7) or (PirateEndingState = 3);
     PirateDefeat := PirateEndingState = 4;
     if (DominatorsResolved = False) or (PirateDefeat <> False) then
@@ -474,22 +467,14 @@ begin
   Text := Text + 'SkillTechnical=' + WideString(IntToStr(SkillLevels[psTechnical])) + #13#10;
   Text := Text + 'SkillTrader=' + WideString(IntToStr(SkillLevels[psTrading])) + #13#10;
   Text := Text + 'SkillCharm=' + WideString(IntToStr(SkillLevels[psCharisma])) + #13#10;
-  Text :=
-      Text
-          + 'SkillLeadership='
-          + WideString(IntToStr(SkillLevels[psLeadership]))
-          + #13#10
-          + #13#10
-          + #13#10;
+  Text := Text + 'SkillLeadership=' + WideString(IntToStr(SkillLevels[psLeadership])) + #13#10 + #13#10 + #13#10;
   Text := Text + '*************** Protect database ****************' + #13#10 + #13#10;
   Buffer := TBufEC.Create;
   Encoded := TBufEC.Create;
   Seed := RandomIntRange(0, 2000000000);
   SaveToBuffer(Buffer);
-  if SteamInitialized then
-    Buffer.AddAnsiStringZ(IntToStr(SteamUserId))
-  else
-    Buffer.AddAnsiStringZ(IntToStr(0));
+  // Preserve the score export's external-account field for file compatibility.
+  Buffer.AddAnsiStringZ('0');
   Buffer.CompressZlibPayloadInPlace(False);
   Buffer.ApplyDatXorCipher(Seed);
   Encoded.AddIntegerValue(3);
@@ -527,8 +512,7 @@ var
   Last: TObject;
   I, Count, J: Integer;
 
-  function ShouldSwapScoreEntries:
-      Boolean; { Nested in TfScore.SortAndTrimEntries; requires its parent frame. }
+  function ShouldSwapScoreEntries: Boolean; { Nested in TfScore.SortAndTrimEntries; requires its parent frame. }
   begin
     if Candidate.TotalScore < Current.TotalScore then
     begin
@@ -988,14 +972,9 @@ begin
       Entry.TerronEndingState := 0;
     end;
   end;
-  Entry.PlayerName :=
-      LookupLocalizedTextByKey(WideString('FormScore.Winners.' + IntToStr(Index) + '.Name'));
+  Entry.PlayerName := LookupLocalizedTextByKey(WideString('FormScore.Winners.' + IntToStr(Index) + '.Name'));
   Entry.PilotRace :=
-      OwnerToRace(
-          OwnerFromInternalName(
-              LookupLocalizedTextByKey(WideString('FormScore.Winners.' + IntToStr(Index) + '.Race'))
-          )
-      );
+      OwnerToRace(OwnerFromInternalName(LookupLocalizedTextByKey(WideString('FormScore.Winners.' + IntToStr(Index) + '.Race'))));
   Entry.Rank := Round(RemapClamped(Index, 0, 10, 6, 3));
   Count :=
       QuestCounts[qtSendLetter]
@@ -1144,9 +1123,7 @@ begin
       for I := 8 to Size - 1 do
       begin
         Data^ := Data^ xor Byte(Seed - 1);
-        Seed :=
-            SeedRngMultiplier * (Seed mod SeedRngQuotient)
-                - SeedRngRemainder * (Seed div SeedRngQuotient);
+        Seed := SeedRngMultiplier * (Seed mod SeedRngQuotient) - SeedRngRemainder * (Seed div SeedRngQuotient);
         if Seed <= 0 then
           Inc(Seed, SeedRngModulus);
         Data := PByte(PAnsiChar(Data) + 1);
@@ -1225,9 +1202,7 @@ begin
   for I := 8 to Size - 1 do
   begin
     Data^ := Data^ xor Byte(Seed - 1);
-    Seed :=
-        SeedRngMultiplier * (Seed mod SeedRngQuotient)
-            - SeedRngRemainder * (Seed div SeedRngQuotient);
+    Seed := SeedRngMultiplier * (Seed mod SeedRngQuotient) - SeedRngRemainder * (Seed div SeedRngQuotient);
     if Seed <= 0 then
       Inc(Seed, SeedRngModulus);
     Data := PByte(PAnsiChar(Data) + 1);
@@ -1257,28 +1232,17 @@ end;
 procedure TfScore.InitializeLayout;
 begin
   inherited InitializeLayout;
-  AppendLogTextThreadSafe('fScore... ');
+  LogGameMessage(gllDebug, 'ui', 'Initializing layout fScore');
   ViewportRect := Classes.Rect(0, 0, GameScreenWidth, GameScreenHeight);
   with GetByName('MainPanel') do
   begin
     SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
     FirstChild.SetSize(Classes.Point(GameScreenWidth, GameScreenHeight));
     with FindByNameRecursive('PanelToServer') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + ExtraScreenHeight div 2
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + ExtraScreenHeight div 2));
     with FindByNameRecursive('PanelWin') do
-      SetPosition(
-          Classes.Point(
-              LocalPosition.X + ExtraScreenWidth div 2,
-              LocalPosition.Y + ExtraScreenHeight div 2
-          )
-      );
+      SetPosition(Classes.Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + ExtraScreenHeight div 2));
   end;
-  AppendLogLineThreadSafe('ok');
   SetHelpCallback(ShowControlHelp);
   (GetByName('ButClear') as TGraphButtonGI).UpCallback := DeleteEntryClicked;
   (GetByName('ButExit') as TGraphButtonGI).UpCallback := CloseClicked;
@@ -1462,8 +1426,7 @@ begin
       SetImagePath(
           'GI,Bm.FormScore2.'
               + GiResourceSuffix
-              + OwnerInfo[RaceToOwner(TfScoreUnit(Entries[Sender.UserValue]).PilotRace)]
-                  .InternalName
+              + OwnerInfo[RaceToOwner(TfScoreUnit(Entries[Sender.UserValue]).PilotRace)].InternalName
               + 'A'
       );
   end;
@@ -1478,8 +1441,7 @@ begin
       SetImagePath(
           'GI,Bm.FormScore2.'
               + GiResourceSuffix
-              + OwnerInfo[RaceToOwner(TfScoreUnit(Entries[Sender.UserValue]).PilotRace)]
-                  .InternalName
+              + OwnerInfo[RaceToOwner(TfScoreUnit(Entries[Sender.UserValue]).PilotRace)].InternalName
               + 'N'
       );
   end;
@@ -1513,10 +1475,7 @@ end;
 
 procedure TfScore.ClearTableClicked(Sender: TObjectGI);
 begin
-  if ShowMessageBoxGI(
-          Self,
-          LanguageDataConfig.GetParamByPathOrMarker('FormScore.QueryClear'),
-          mbgOK or mbgCancel or mbgQuestion)
+  if ShowMessageBoxGI(Self, LanguageDataConfig.GetParamByPathOrMarker('FormScore.QueryClear'), mbgOK or mbgCancel or mbgQuestion)
       <> mbgResultOK then
     PostMouseMoveMessage
   else
@@ -1580,19 +1539,9 @@ begin
     Selected := I = SelectedIndex;
     with GetByName(WideString('Slot' + IntToStr(I) + 'Active')) as TImageGI do
       if Selected then
-        SetImagePath(
-            'GI,Bm.FormScore2.'
-                + GiResourceSuffix
-                + OwnerInfo[RaceToOwner(Entry.PilotRace)].InternalName
-                + 'D'
-        )
+        SetImagePath('GI,Bm.FormScore2.' + GiResourceSuffix + OwnerInfo[RaceToOwner(Entry.PilotRace)].InternalName + 'D')
       else
-        SetImagePath(
-            'GI,Bm.FormScore2.'
-                + GiResourceSuffix
-                + OwnerInfo[RaceToOwner(Entry.PilotRace)].InternalName
-                + 'N'
-        );
+        SetImagePath('GI,Bm.FormScore2.' + GiResourceSuffix + OwnerInfo[RaceToOwner(Entry.PilotRace)].InternalName + 'N');
     with GetByName(WideString('Slot' + IntToStr(I) + 'Nom')) as TLabelGI do
     begin
       if Selected then
@@ -1683,76 +1632,40 @@ begin
   begin
     SetActive(Entry.SkillLevels[psAccuracy] > 0);
     if Active then
-      SetImagePath(
-          'GI,Bm.FormScore2.'
-              + GiResourceSuffix
-              + 'Skill'
-              + WideString(IntToStr(Entry.SkillLevels[psAccuracy] - 1))
-      );
+      SetImagePath('GI,Bm.FormScore2.' + GiResourceSuffix + 'Skill' + WideString(IntToStr(Entry.SkillLevels[psAccuracy] - 1)));
   end;
   with GetByName('Skill1') as TImageGI do
   begin
     SetActive(Entry.SkillLevels[psManeuverability] > 0);
     if Active then
-      SetImagePath(
-          'GI,Bm.FormScore2.'
-              + GiResourceSuffix
-              + 'Skill'
-              + WideString(IntToStr(Entry.SkillLevels[psManeuverability] - 1))
-      );
+      SetImagePath('GI,Bm.FormScore2.' + GiResourceSuffix + 'Skill' + WideString(IntToStr(Entry.SkillLevels[psManeuverability] - 1)));
   end;
   with GetByName('Skill2') as TImageGI do
   begin
     SetActive(Entry.SkillLevels[psTechnical] > 0);
     if Active then
-      SetImagePath(
-          'GI,Bm.FormScore2.'
-              + GiResourceSuffix
-              + 'Skill'
-              + WideString(IntToStr(Entry.SkillLevels[psTechnical] - 1))
-      );
+      SetImagePath('GI,Bm.FormScore2.' + GiResourceSuffix + 'Skill' + WideString(IntToStr(Entry.SkillLevels[psTechnical] - 1)));
   end;
   with GetByName('Skill3') as TImageGI do
   begin
     SetActive(Entry.SkillLevels[psTrading] > 0);
     if Active then
-      SetImagePath(
-          'GI,Bm.FormScore2.'
-              + GiResourceSuffix
-              + 'Skill'
-              + WideString(IntToStr(Entry.SkillLevels[psTrading] - 1))
-      );
+      SetImagePath('GI,Bm.FormScore2.' + GiResourceSuffix + 'Skill' + WideString(IntToStr(Entry.SkillLevels[psTrading] - 1)));
   end;
   with GetByName('Skill4') as TImageGI do
   begin
     SetActive(Entry.SkillLevels[psCharisma] > 0);
     if Active then
-      SetImagePath(
-          'GI,Bm.FormScore2.'
-              + GiResourceSuffix
-              + 'Skill'
-              + WideString(IntToStr(Entry.SkillLevels[psCharisma] - 1))
-      );
+      SetImagePath('GI,Bm.FormScore2.' + GiResourceSuffix + 'Skill' + WideString(IntToStr(Entry.SkillLevels[psCharisma] - 1)));
   end;
   with GetByName('Skill5') as TImageGI do
   begin
     SetActive(Entry.SkillLevels[psLeadership] > 0);
     if Active then
-      SetImagePath(
-          'GI,Bm.FormScore2.'
-              + GiResourceSuffix
-              + 'Skill'
-              + WideString(IntToStr(Entry.SkillLevels[psLeadership] - 1))
-      );
+      SetImagePath('GI,Bm.FormScore2.' + GiResourceSuffix + 'Skill' + WideString(IntToStr(Entry.SkillLevels[psLeadership] - 1)));
   end;
   (GetByName('IDate') as TLabelGI)
-      .SetText(
-          FormatText1(
-              LocalizedColorText('FormScore.DateWin'),
-              ScoreValueColorTag,
-              '<Date>',
-              FormatGameTurnDate(Entry.FinishedTurn)
-          ));
+      .SetText(FormatText1(LocalizedColorText('FormScore.DateWin'), ScoreValueColorTag, '<Date>', FormatGameTurnDate(Entry.FinishedTurn)));
   (GetByName('ITurn') as TLabelGI)
       .SetText(
           FormatText1(
@@ -1783,12 +1696,7 @@ begin
           ));
   (GetByName('IRewards') as TLabelGI)
       .SetText(
-          FormatText1(
-              LocalizedColorText('FormScore.Rewards'),
-              TextHighlightColorTag,
-              '<Rewards>',
-              WideString(IntToStr(Entry.AwardCount))
-          ));
+          FormatText1(LocalizedColorText('FormScore.Rewards'), TextHighlightColorTag, '<Rewards>', WideString(IntToStr(Entry.AwardCount))));
   LetterQuests := 0;
   ShipKillQuests := 0;
   PlanetQuests := 0;
@@ -1812,15 +1720,7 @@ begin
               LocalizedColorText('FormScore.Quests'),
               TextHighlightColorTag,
               '<Quests>',
-              WideString(
-                  IntToStr(
-                      LetterQuests
-                          + ShipKillQuests
-                          + PlanetQuests
-                          + SystemDefenseQuests
-                          + ShipDefenseQuests
-                  )
-              )
+              WideString(IntToStr(LetterQuests + ShipKillQuests + PlanetQuests + SystemDefenseQuests + ShipDefenseQuests))
           ));
   if GiResourceVariant = 2 then
     Separator := '+'
@@ -1874,9 +1774,7 @@ begin
         begin
           HelpText :=
               FormatText1(
-                  LookupLocalizedTextByKey(
-                      WideString('FormScore.Quests' + IntToStr((I - 1) div 2 + 1))
-                  ),
+                  LookupLocalizedTextByKey(WideString('FormScore.Quests' + IntToStr((I - 1) div 2 + 1))),
                   TextHighlightColorTag,
                   '<N>',
                   GetText
@@ -1902,13 +1800,7 @@ begin
               WideString(IntToStr(Entry.PlanetBattles))
           ));
   (GetByName('IExp') as TLabelGI)
-      .SetText(
-          FormatText1(
-              LocalizedColorText('FormScore.Exp'),
-              ScoreValueColorTag,
-              '<Exp>',
-              WideString(IntToStr(Entry.TotalExperience))
-          ));
+      .SetText(FormatText1(LocalizedColorText('FormScore.Exp'), ScoreValueColorTag, '<Exp>', WideString(IntToStr(Entry.TotalExperience))));
   ResolvedColor := '<color=255,100,50>';
   UnresolvedColor := '<color=30,252,30>';
   case Entry.BlazerEndingState of
@@ -1921,14 +1813,7 @@ begin
     else
       Text := WrapTextInColor(LocalizedColorText('FormScore.BlazerChangeSide'), ResolvedColor);
   end;
-  (GetByName('IBlazer') as TLabelGI)
-      .SetText(
-          FormatText1(
-              Text,
-              '',
-              '<Blazer>',
-              LookupLocalizedTextByKey('ShipType.Dominator.Blazer.0')
-          ));
+  (GetByName('IBlazer') as TLabelGI).SetText(FormatText1(Text, '', '<Blazer>', LookupLocalizedTextByKey('ShipType.Dominator.Blazer.0')));
   case Entry.KellerEndingState of
     0: Text := WrapTextInColor(LocalizedColorText('FormScore.KellerLeave'), UnresolvedColor);
     1: Text := WrapTextInColor(LocalizedColorText('FormScore.KellerDead'), ResolvedColor);
@@ -1936,14 +1821,7 @@ begin
   else
     Text := WrapTextInColor(LocalizedColorText('FormScore.KellerNewResearch'), ResolvedColor);
   end;
-  (GetByName('IKeller') as TLabelGI)
-      .SetText(
-          FormatText1(
-              Text,
-              '',
-              '<Keller>',
-              LookupLocalizedTextByKey('ShipType.Dominator.Keller.0')
-          ));
+  (GetByName('IKeller') as TLabelGI).SetText(FormatText1(Text, '', '<Keller>', LookupLocalizedTextByKey('ShipType.Dominator.Keller.0')));
   case Entry.TerronEndingState of
     0: Text := WrapTextInColor(LocalizedColorText('FormScore.TerronLeave'), UnresolvedColor);
     1: Text := WrapTextInColor(LocalizedColorText('FormScore.TerronDead'), ResolvedColor);
@@ -1951,22 +1829,9 @@ begin
   else
     Text := WrapTextInColor(LocalizedColorText('FormScore.TerronBattle'), ResolvedColor);
   end;
-  (GetByName('ITerron') as TLabelGI)
-      .SetText(
-          FormatText1(
-              Text,
-              '',
-              '<Terron>',
-              LookupLocalizedTextByKey('ShipType.Dominator.Terron.0')
-          ));
+  (GetByName('ITerron') as TLabelGI).SetText(FormatText1(Text, '', '<Terron>', LookupLocalizedTextByKey('ShipType.Dominator.Terron.0')));
   if Entry.PirateEndingState > 0 then
-    Text :=
-        WrapTextInColor(
-            LocalizedColorText(
-                WideString('FormScore.PirateWin' + IntToStr(Entry.PirateEndingState))
-            ),
-            ResolvedColor
-        )
+    Text := WrapTextInColor(LocalizedColorText(WideString('FormScore.PirateWin' + IntToStr(Entry.PirateEndingState))), ResolvedColor)
   else
     Text := WrapTextInColor(LocalizedColorText('FormScore.PirateWin0'), UnresolvedColor);
   with GetByName('IPirate') as TLabelGI do
@@ -1977,12 +1842,7 @@ begin
   if Entry.VictoryAchieved then
     (GetByName('ITotal') as TLabelGI)
         .SetText(
-            FormatText1(
-                LocalizedColorText('FormScore.TotalWin'),
-                ScoreValueColorTag,
-                '<Total>',
-                WideString(IntToStr(Entry.TotalScore))
-            ))
+            FormatText1(LocalizedColorText('FormScore.TotalWin'), ScoreValueColorTag, '<Total>', WideString(IntToStr(Entry.TotalScore))))
   else
     (GetByName('ITotal') as TLabelGI).SetText(LocalizedColorText('FormScore.TotalLoss'));
   (GetByName('INote') as TLabelGI).SetText(LocalizedColorText('FormScore.Note'));
@@ -2013,20 +1873,8 @@ begin
   Entry.ExportToFile(FileName);
   Text := LocalizedColorText('FormScore.ToServer');
   Text := ReplaceColoredToken(Text, '<Player>', Entry.PlayerName, TextHighlightColorTag);
-  Text :=
-      ReplaceColoredToken(
-          Text,
-          '<File>',
-          ReplaceAllWideString(FileName, '\', ' \ '),
-          TextHighlightColorTag
-      );
-  Text :=
-      ReplaceColoredToken(
-          Text,
-          '<WinGameDate>',
-          FormatGameTurnDate(Entry.FinishedTurn),
-          TextHighlightColorTag
-      );
+  Text := ReplaceColoredToken(Text, '<File>', ReplaceAllWideString(FileName, '\', ' \ '), TextHighlightColorTag);
+  Text := ReplaceColoredToken(Text, '<WinGameDate>', FormatGameTurnDate(Entry.FinishedTurn), TextHighlightColorTag);
   Entry.Exported := True;
   ShowMessageBoxGI(Self, Text, mbgOK or mbgUnused04 or mbgLeftAlign);
   RefreshDetails;

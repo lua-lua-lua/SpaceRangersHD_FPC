@@ -203,11 +203,7 @@ var
   Target: TPoint;
   Intersection: TRect;
 begin
-  MessageLoop.UpdateRects.AddScreenClippedRect(
-      HitTestBounds,
-      Parent.ToAbsolutePoint(LocalPosition),
-      Parent.ToAbsolutePoint(TargetPoint)
-  );
+  MessageLoop.UpdateRects.AddScreenClippedRect(HitTestBounds, Parent.ToAbsolutePoint(LocalPosition), Parent.ToAbsolutePoint(TargetPoint));
   Target := Parent.ToAbsolutePoint(TargetPoint);
   Rect.Left := Target.X - 32;
   Rect.Right := Target.X + 32;
@@ -277,8 +273,7 @@ begin
   end
   else
   begin
-    Distance :=
-        Trunc(Sqrt(Sqr(TargetPoint.X - LocalPosition.X) + Sqr(TargetPoint.Y - LocalPosition.Y)));
+    Distance := Trunc(Sqrt(Sqr(TargetPoint.X - LocalPosition.X) + Sqr(TargetPoint.Y - LocalPosition.Y)));
     UpdateHitTestBounds;
     Particle := FirstParticle;
     while Particle <> nil do
@@ -434,16 +429,10 @@ begin
         PY := -Particle.Position.Y;
         X := Round(PX * Cosine - PY * Sine + AbsolutePosition.X);
         Y := Round(PX * Sine + PY * Cosine + AbsolutePosition.Y);
-        if (X >= ClipRect.Left)
-            and (X < ClipRect.Right)
-            and (Y >= ClipRect.Top)
-            and (Y < ClipRect.Bottom) then
+        if (X >= ClipRect.Left) and (X < ClipRect.Right) and (Y >= ClipRect.Top) and (Y < ClipRect.Bottom) then
           ScreenRenderBuffer.BlendPixel16(X, Y, Particle.Color, Particle.Alpha);
         Dec(X);
-        if (X >= ClipRect.Left)
-            and (X < ClipRect.Right)
-            and (Y >= ClipRect.Top)
-            and (Y < ClipRect.Bottom) then
+        if (X >= ClipRect.Left) and (X < ClipRect.Right) and (Y >= ClipRect.Top) and (Y < ClipRect.Bottom) then
           ScreenRenderBuffer.BlendPixel16(X, Y, Particle.Color, Particle.Alpha);
       end;
       Particle := Particle.Next;
@@ -471,7 +460,7 @@ begin
     if Block.CountBlocks(Text) <> 0 then
     begin
       PaletteBlock := Block.GetBlockByPath(Text);
-      for ColorIndex := 0 to 1 do
+      for ColorIndex := Low(TFragCannonPalette) to High(TFragCannonPalette) do
         if PaletteBlock.CountParams('Color' + IntToStr(ColorIndex)) > 0 then
         begin
           Text := PaletteBlock.GetParam('Color' + IntToStr(ColorIndex));

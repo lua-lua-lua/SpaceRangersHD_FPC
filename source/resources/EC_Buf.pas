@@ -107,6 +107,7 @@ type
 implementation
 
 uses
+  GameDiagnostics,
   CrcUnit,
   EC_Mem,
   EC_OKGF,
@@ -115,7 +116,15 @@ uses
   SysUtils,
   Types;
 
+type
+  TEmbeddedCrc32EC = packed record
+    RangeCrc: Cardinal;
+    Correction: Cardinal;
+  end;
+  PEmbeddedCrc32EC = ^TEmbeddedCrc32EC;
+
 const
+  MaxFileReadChunkSize = 256 * 1024;
   BufferGrowthSlack = 256;
   CarriageReturnCode = 13;
   LineFeedCode = 10;
@@ -190,11 +199,7 @@ end;
 procedure TBufEC.EnsureWriteCapacityAtOffset(Offset, AddedBytes: Integer);
 begin
   if (AddedBytes < 1) or (Offset < 0) or (Offset > DataSize) then
-    raise Exception.Create(
-        'TBufEC.TestAddLenBuf. sme='
-            + SysUtils.IntToStr(Offset)
-            + ' addlen='
-            + SysUtils.IntToStr(AddedBytes));
+    raise Exception.Create('TBufEC.TestAddLenBuf. sme=' + SysUtils.IntToStr(Offset) + ' addlen=' + SysUtils.IntToStr(AddedBytes));
   if Offset + AddedBytes > DataSize then
   begin
     DataSize := Offset + AddedBytes;
@@ -215,8 +220,7 @@ end;
 procedure TBufEC.EnsureReadableAtOffset(Offset, Bytes: Integer);
 begin
   if (Bytes < 1) or (Offset + Bytes > DataSize) then
-    raise Exception.Create(
-        'TBufEC.TestGet. sme=' + SysUtils.IntToStr(Offset) + ' len=' + SysUtils.IntToStr(Bytes));
+    raise Exception.Create('TBufEC.TestGet. sme=' + SysUtils.IntToStr(Offset) + ' len=' + SysUtils.IntToStr(Bytes));
 end;
 
 procedure TBufEC.SetByteAt(Offset: Integer; Value: Byte);
@@ -234,7 +238,7 @@ end;
 procedure TBufEC.AddBytes(Source: Pointer; ByteCount: Integer);
 begin
   EnsureWriteCapacity(ByteCount);
-  System.Move(Pointer(Source)^, Pointer(AddPointerOffset(Data, Position))^, ByteCount);
+  System.Move(Source^, AddPointerOffset(Data, Position)^, ByteCount);
   Inc(Position, ByteCount);
 end;
 
@@ -244,8 +248,7 @@ var
 begin
   ByteCount := Length(Value);
   EnsureWriteCapacity(ByteCount + 1);
-  System
-      .Move(Pointer(PAnsiChar(Value))^, Pointer(AddPointerOffset(Data, Position))^, ByteCount + 1);
+  System.Move(PAnsiChar(Value)^, AddPointerOffset(Data, Position)^, ByteCount + 1);
   Position := Position + ByteCount + 1;
 end;
 
@@ -255,11 +258,7 @@ var
 begin
   ByteCount := Length(Value) * SizeOf(WideChar);
   EnsureWriteCapacity(ByteCount + SizeOf(WideChar));
-  System.Move(
-      Pointer(PWideChar(Value))^,
-      Pointer(AddPointerOffset(Data, Position))^,
-      ByteCount + SizeOf(WideChar)
-  );
+  System.Move(PWideChar(Value)^, AddPointerOffset(Data, Position)^, ByteCount + SizeOf(WideChar));
   Position := Position + ByteCount + SizeOf(WideChar);
 end;
 
@@ -271,7 +270,7 @@ begin
   if ByteCount > 0 then
   begin
     EnsureWriteCapacity(ByteCount);
-    System.Move(Pointer(PAnsiChar(Value))^, Pointer(AddPointerOffset(Data, Position))^, ByteCount);
+    System.Move(PAnsiChar(Value)^, AddPointerOffset(Data, Position)^, ByteCount);
     Inc(Position, ByteCount);
   end;
 end;
@@ -284,7 +283,7 @@ begin
   if ByteCount > 0 then
   begin
     EnsureWriteCapacity(ByteCount);
-    System.Move(Pointer(PWideChar(Value))^, Pointer(AddPointerOffset(Data, Position))^, ByteCount);
+    System.Move(PWideChar(Value)^, AddPointerOffset(Data, Position)^, ByteCount);
     Inc(Position, ByteCount);
   end;
 end;
@@ -394,7 +393,7 @@ end;
 function TBufEC.ReadBytes(Dest: Pointer; ByteCount: Integer): Pointer;
 begin
   EnsureReadable(ByteCount);
-  System.Move(Pointer(AddPointerOffset(Data, Position))^, Pointer(Dest)^, ByteCount);
+  System.Move(AddPointerOffset(Data, Position)^, Dest^, ByteCount);
   Inc(Position, ByteCount);
   Result := Dest;
 end;
@@ -407,11 +406,7 @@ begin
   if Count > 0 then
   begin
     EnsureReadable(Count * SizeOf(WideChar) + SizeOf(WideChar));
-    System.Move(
-        Pointer(PAnsiChar(Data) + Position)^,
-        Pointer(Dest)^,
-        Count * SizeOf(WideChar) + SizeOf(WideChar)
-    );
+    System.Move(Pointer(PAnsiChar(Data) + Position)^, Dest^, Count * SizeOf(WideChar) + SizeOf(WideChar));
     Position := Position + Count * SizeOf(WideChar) + SizeOf(WideChar);
   end
   else
@@ -465,7 +460,7 @@ begin
   if IsNan(Result) then
   begin
     Result := 0;
-    AppendLogLineThreadSafe('Warning! NaN encountered, replaced with zero.');
+    LogGameMessage(gllWarning, 'resources', 'NaN in serialized data; replaced with zero');
   end;
 end;
 
@@ -476,7 +471,7 @@ begin
   if IsNan(Result) then
   begin
     Result := 0;
-    AppendLogLineThreadSafe('Warning! NaN encountered, replaced with zero.');
+    LogGameMessage(gllWarning, 'resources', 'NaN in serialized data; replaced with zero');
   end;
   Inc(Position, SizeOf(Result));
 end;
@@ -583,7 +578,7 @@ begin
   Count := GetAnsiTextLineLength;
   if Count > 0 then
   begin
-    System.Move(Pointer(PAnsiChar(Data) + Position)^, Pointer(Dest)^, Count);
+    System.Move(Pointer(PAnsiChar(Data) + Position)^, Dest^, Count);
     Dest[Count] := #0;
     Inc(Position, Count);
   end
@@ -630,7 +625,7 @@ begin
   Count := GetWideTextLineLength;
   if Count > 0 then
   begin
-    System.Move(Pointer(PAnsiChar(Data) + Position)^, Pointer(Dest)^, Count * SizeOf(WideChar));
+    System.Move(Pointer(PAnsiChar(Data) + Position)^, Dest^, Count * SizeOf(WideChar));
     Dest[Count] := #0;
     Inc(Position, Count * SizeOf(WideChar));
   end
@@ -755,12 +750,9 @@ var
   State, i: Integer;
   Cursor: PByte;
 
-  function StepDatXorSeedState:
-      Integer; { Nested helper of TBufEC.ApplyDatXorCipher; requires its parent stack frame. }
+  function StepDatXorSeedState: Integer; { Nested helper of TBufEC.ApplyDatXorCipher; requires its parent stack frame. }
   begin
-    State :=
-        SeedRngMultiplier * (State mod SeedRngQuotient)
-            - SeedRngRemainder * (State div SeedRngQuotient);
+    State := SeedRngMultiplier * (State mod SeedRngQuotient) - SeedRngRemainder * (State div SeedRngQuotient);
     if State <= 0 then
       State := State + SeedRngModulus;
     Result := State - 1;
@@ -789,57 +781,44 @@ end;
 procedure TBufEC.UpdateEmbeddedCrc32(StartOffset, EndOffset, CrcOffset: Integer);
 var
   WholeCrc, PreviousPrefixCrc, NewPrefixCrc: Cardinal;
+  Embedded: PEmbeddedCrc32EC;
 begin
   if CrcOffset < StartOffset then
     raise Exception.Create('CRC update error');
-  if CrcOffset + 8 > EndOffset then
+  if CrcOffset + SizeOf(TEmbeddedCrc32EC) > EndOffset then
     raise Exception.Create('CRC update error');
-  WholeCrc := ExtendCrc32(0, Pointer(PAnsiChar(Data) + StartOffset), EndOffset - StartOffset);
-  PreviousPrefixCrc :=
-      ExtendCrc32(0, Pointer(PAnsiChar(Data) + StartOffset), CrcOffset - StartOffset + 8);
-  PCardinal(PAnsiChar(Data) + CrcOffset)^ := WholeCrc;
-  NewPrefixCrc :=
-      ExtendCrc32(0, Pointer(PAnsiChar(Data) + StartOffset), CrcOffset - StartOffset + 4);
-  WriteCrc32Correction(NewPrefixCrc, PreviousPrefixCrc, Pointer(CrcOffset + 4 + PAnsiChar(Data)));
+  WholeCrc := ExtendCrc32(0, PAnsiChar(Data) + StartOffset, EndOffset - StartOffset);
+  PreviousPrefixCrc := ExtendCrc32(0, PAnsiChar(Data) + StartOffset, CrcOffset - StartOffset + SizeOf(TEmbeddedCrc32EC));
+  Embedded := PEmbeddedCrc32EC(PAnsiChar(Data) + CrcOffset);
+  Embedded.RangeCrc := WholeCrc;
+  NewPrefixCrc := ExtendCrc32(0, PAnsiChar(Data) + StartOffset, CrcOffset - StartOffset + SizeOf(Embedded.RangeCrc));
+  WriteCrc32Correction(NewPrefixCrc, PreviousPrefixCrc, @Embedded.Correction);
 end;
 
 procedure TBufEC.LoadFromFileChunk(SourceFile: TFileEC; ByteCount: Integer);
 var
   ChunkSize: Integer;
   Cursor: Pointer;
-  NextChunkSize: Integer;
 begin
-  Self.Clear;
+  Clear;
   SourceFile.AcquireReadWriteHandle;
   try
-    Self.SetSize(ByteCount);
-    Cursor := Self.Data;
-    if (ByteCount > 0) then
+    SetSize(ByteCount);
+    Cursor := Data;
+    while ByteCount > 0 do
     begin
-      repeat
-        if (ByteCount > 262144) then
-        begin
-          NextChunkSize := 262144;
-        end
-        else
-        begin
-          NextChunkSize := ByteCount;
-        end;
-        ChunkSize := NextChunkSize;
-        SourceFile.ReadBuffer(Cursor, ChunkSize);
-        Cursor := AddPointerOffset(Cursor, ChunkSize);
-        ByteCount := (ByteCount - ChunkSize);
-        if (ByteCount > 0) then
-        begin
-          SysUtils.Sleep(1);
-        end;
-      until ByteCount <= 0;
+      ChunkSize := Min(MaxFileReadChunkSize, ByteCount);
+      SourceFile.ReadBuffer(Cursor, ChunkSize);
+      Cursor := AddPointerOffset(Cursor, ChunkSize);
+      Dec(ByteCount, ChunkSize);
+      if ByteCount > 0 then
+        SysUtils.Sleep(1);
     end;
   except
-    Self.Clear;
+    LogCurrentGameException('resources', 'reading resource ' + SourceFile.FileName + '; returning an empty buffer', gllWarning);
+    Clear;
   end;
   SourceFile.ReleaseHandle;
-  Exit;
 end;
 
 procedure TBufEC.LoadFromFile(SourceFile: TFileEC);
@@ -853,6 +832,7 @@ begin
     SetSize(ByteCount);
     SourceFile.ReadBuffer(Data, ByteCount);
   except
+    LogCurrentGameException('resources', 'reading resource ' + SourceFile.FileName + '; returning an empty buffer', gllWarning);
     Clear;
   end;
   SourceFile.ReleaseHandle;

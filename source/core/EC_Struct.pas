@@ -31,6 +31,17 @@ type
     destructor Destroy; override;
   end;
 
+  // Only object families inspected by native mods need lifetime tracking.
+  // Keep this base fieldless to preserve their instance layouts.
+{$IFDEF NATIVE_SCRIPT_MODS}
+  TRegisteredGameObject = class(TObjectEx)
+    class function NewInstance: TObject; override;
+    procedure FreeInstance; override;
+  end;
+{$ELSE}
+  TRegisteredGameObject = TObjectEx;
+{$ENDIF}
+
 var
 
   StartupCleanupObject: TObject;
@@ -62,6 +73,28 @@ function SubtractPointsF(Left: TPointF; Right: TPointF): TPointF;
 function IntersectRects(out Intersection: TRect; const First: TRect; const Second: TRect): Boolean;
 
 implementation
+
+{$IFDEF NATIVE_SCRIPT_MODS}
+uses
+  GameObjectRegistry;
+
+class function TRegisteredGameObject.NewInstance: TObject;
+begin
+  Result := inherited NewInstance;
+  try
+    RegisterGameObject(Pointer(Result));
+  except
+    Result.FreeInstance;
+    raise;
+  end;
+end;
+
+procedure TRegisteredGameObject.FreeInstance;
+begin
+  UnregisterGameObject(Pointer(Self));
+  inherited FreeInstance;
+end;
+{$ENDIF}
 
 function SquaredDistanceToPoint(const Point: TPoint; X, Y: Integer): Integer; inline;
 begin
@@ -139,11 +172,7 @@ function IntersectRects(out Intersection: TRect; const First, Second: TRect): Bo
 begin
   // Preserve the assembly's four overlap tests, even for inverted rectangles.
   // In particular, failure must leave Intersection untouched when it aliases an input.
-  Result :=
-      (Second.Left < First.Right)
-          and (Second.Right > First.Left)
-          and (Second.Top < First.Bottom)
-          and (Second.Bottom > First.Top);
+  Result := (Second.Left < First.Right) and (Second.Right > First.Left) and (Second.Top < First.Bottom) and (Second.Bottom > First.Top);
   if not Result then
     Exit;
   if First.Left > Second.Left then

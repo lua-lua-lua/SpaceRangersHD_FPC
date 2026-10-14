@@ -19,13 +19,10 @@ type
 
   TAwardTypeMask = set of TAwardKind;
 
-  TSystemKillCountArray = array[0..3] of Word;
-
   TSystemKillCounts = packed record
-    Normal: Word;
-    Dominator: Word;
-    Pirate: Word;
-    Custom: Word;
+  case Boolean of
+    False: (Normal: Word; Dominator: Word; Pirate: Word; Custom: Word;);
+    True: (ByFaction: array[TStarFaction] of Word);
   end;
 
   TNormalShip = class(TShip)
@@ -87,6 +84,7 @@ procedure ProcessSystemLiberationRewards(SourceShip: TNormalShip; Star: TStar);
 implementation
 
 uses
+  GameDiagnostics,
   EC_Str,
   aGalaxyEvent,
   Classes,
@@ -213,9 +211,8 @@ end;
 procedure TNormalShip.ResolveLoadedReferences(Galaxy: TGalaxy);
 begin
   inherited ResolveLoadedReferences(Galaxy);
-  PendingLiberationCeremonyPlanet :=
-      TObject(Galaxy.IdToPlanet(Cardinal(PendingLiberationCeremonyPlanet))) as TPlanet;
-  LastDockedPlanet := TObject(Galaxy.IdToPlanet(Cardinal(LastDockedPlanet))) as TPlanet;
+  PendingLiberationCeremonyPlanet := Galaxy.IdToPlanet(Cardinal(PendingLiberationCeremonyPlanet)) as TPlanet;
+  LastDockedPlanet := Galaxy.IdToPlanet(Cardinal(LastDockedPlanet)) as TPlanet;
 end;
 
 procedure TNormalShip.ClearObjectReferences;
@@ -229,32 +226,18 @@ procedure TNormalShip.SaveToBlock(Block: TBlockParEC);
 begin
   inherited SaveToBlock(Block);
   Block.AddParam(DecodeTextW('Roarnuke'), WideString(IntToStr(Rank))); // 'Rank'
-  Block.AddParam(
-      DecodeTextW('RearnaksProcitnotas'),
-      WideString(IntToStr(RankPoints))
-  ); // 'RankPoints'
-  Block.AddParam(
-      DecodeTextW('PlivroaktrenRiasnuk'),
-      WideString(IntToStr(PirateRank))
-  ); // 'PirateRank'
-  Block.AddParam(
-      DecodeTextW('PhilroaAtrelRoasnAkoPiopionatos'),
-      WideString(IntToStr(PirateRankPoints))
-  ); // 'PirateRankPoints'
+  Block.AddParam(DecodeTextW('RearnaksProcitnotas'), WideString(IntToStr(RankPoints))); // 'RankPoints'
+  Block.AddParam(DecodeTextW('PlivroaktrenRiasnuk'), WideString(IntToStr(PirateRank))); // 'PirateRank'
+  Block.AddParam(DecodeTextW('PhilroaAtrelRoasnAkoPiopionatos'), WideString(IntToStr(PirateRankPoints))); // 'PirateRankPoints'
 end;
 
 procedure TNormalShip.LoadFromBlock(Block: TBlockParEC);
 begin
   inherited LoadFromBlock(Block);
   Rank := StrToInt(AnsiString(Block.GetParam(DecodeTextW('Roarnuke')))); // 'Rank'
-  RankPoints :=
-      StrToInt(AnsiString(Block.GetParam(DecodeTextW('RearnaksProcitnotas')))); // 'RankPoints'
-  PirateRank :=
-      StrToInt(AnsiString(Block.GetParam(DecodeTextW('PlivroaktrenRiasnuk')))); // 'PirateRank'
-  PirateRankPoints :=
-      Word(
-          StrToInt(AnsiString(Block.GetParam(DecodeTextW('PhilroaAtrelRoasnAkoPiopionatos'))))
-      ); // 'PirateRankPoints'
+  RankPoints := StrToInt(AnsiString(Block.GetParam(DecodeTextW('RearnaksProcitnotas')))); // 'RankPoints'
+  PirateRank := StrToInt(AnsiString(Block.GetParam(DecodeTextW('PlivroaktrenRiasnuk')))); // 'PirateRank'
+  PirateRankPoints := Word(StrToInt(AnsiString(Block.GetParam(DecodeTextW('PhilroaAtrelRoasnAkoPiopionatos'))))); // 'PirateRankPoints'
 end;
 
 procedure TNormalShip.NextDay;
@@ -301,12 +284,8 @@ begin
   except
     on E: Exception do
     begin
-      AppendLogLineThreadSafe(E.ClassName + ' ' + E.Message);
-      raise Exception.Create(
-          'Error in procedure TNormalShip.NextDay '
-              + GetFullName(' ')
-              + ' label = '
-              + IntToStr(Stage));
+      AddGameExceptionContext(E, 'TNormalShip.NextDay ' + GetFullName(' ') + '; stage=' + IntToStr(Stage));
+      raise;
     end;
   end;
 end;
@@ -333,8 +312,7 @@ begin
   else
     AwardWeight := RemapClamped(AwardIds.Count, 0, 15, 80, 10);
   if (Self is TRanger) and (Self as TRanger).HasProgram(prgIntercom) then
-    ProgramWeight :=
-        RemapClamped((Self as TRanger).CountProgramsInFilter(RewardPrograms), 0, 10, 80, 10)
+    ProgramWeight := RemapClamped((Self as TRanger).CountProgramsInFilter(RewardPrograms), 0, 10, 80, 10)
   else
     ProgramWeight := 0;
   if Self is TPlayer then
@@ -348,46 +326,22 @@ begin
   if (AwardWeight = 0) and (ProgramWeight = 0) and (ArtefactWeight = 0) and (ModuleWeight = 0) then
     ModuleWeight := 1;
   if AwardWeight > 0 then
-    AwardWeight :=
-        AwardWeight
-            * SeededRandomIntRange(
-                5,
-                25,
-                CurrentPlanet.GenerationSeed + Galaxy.CurrentTurn div 100 + 1667);
+    AwardWeight := AwardWeight * SeededRandomIntRange(5, 25, CurrentPlanet.GenerationSeed + Galaxy.CurrentTurn div 100 + 1667);
   if ProgramWeight > 0 then
-    ProgramWeight :=
-        ProgramWeight
-            * SeededRandomIntRange(
-                5,
-                25,
-                CurrentPlanet.GenerationSeed + Galaxy.CurrentTurn div 100 + 197673);
+    ProgramWeight := ProgramWeight * SeededRandomIntRange(5, 25, CurrentPlanet.GenerationSeed + Galaxy.CurrentTurn div 100 + 197673);
   if ArtefactWeight > 0 then
-    ArtefactWeight :=
-        ArtefactWeight
-            * SeededRandomIntRange(
-                5,
-                25,
-                CurrentPlanet.GenerationSeed + Galaxy.CurrentTurn div 100 + 719671);
+    ArtefactWeight := ArtefactWeight * SeededRandomIntRange(5, 25, CurrentPlanet.GenerationSeed + Galaxy.CurrentTurn div 100 + 719671);
   if ModuleWeight > 0 then
-    ModuleWeight :=
-        ModuleWeight
-            * SeededRandomIntRange(
-                5,
-                25,
-                CurrentPlanet.GenerationSeed + Galaxy.CurrentTurn div 107 + 1967);
+    ModuleWeight := ModuleWeight * SeededRandomIntRange(5, 25, CurrentPlanet.GenerationSeed + Galaxy.CurrentTurn div 107 + 1967);
   if (CurrentPlanet.OwnerId = oiPirate) and (AwardWeight > 0) then
     AwardWeight := 1;
-  if (AwardWeight > 0)
-      and (AwardWeight >= Max(ModuleWeight, Max(ProgramWeight, ArtefactWeight))) then
+  if (AwardWeight > 0) and (AwardWeight >= Max(ModuleWeight, Max(ProgramWeight, ArtefactWeight))) then
     RewardKind := 1
-  else if (ProgramWeight > 0)
-      and (ProgramWeight >= Max(ModuleWeight, Max(AwardWeight, ArtefactWeight))) then
+  else if (ProgramWeight > 0) and (ProgramWeight >= Max(ModuleWeight, Max(AwardWeight, ArtefactWeight))) then
     RewardKind := 2
-  else if (ArtefactWeight > 0)
-      and (ArtefactWeight >= Max(ModuleWeight, Max(AwardWeight, ProgramWeight))) then
+  else if (ArtefactWeight > 0) and (ArtefactWeight >= Max(ModuleWeight, Max(AwardWeight, ProgramWeight))) then
     RewardKind := 3
-  else if (ModuleWeight > 0)
-      and (ModuleWeight >= Max(ArtefactWeight, Max(AwardWeight, ProgramWeight))) then
+  else if (ModuleWeight > 0) and (ModuleWeight >= Max(ArtefactWeight, Max(AwardWeight, ProgramWeight))) then
     RewardKind := 4
   else
   begin
@@ -399,19 +353,10 @@ begin
     if CurrentPlanet.OwnerId <> oiPirate then
     begin
       if CurrentPlanet.CurrentStar.PreviousControlFaction = sfDominators then
-        Result :=
-            LocalizedColorText(
-                'PlanetCongratulations.LiberationStarNormalsFromKling.'
-                    + OwnerToSys(CurrentPlanet.OwnerId)
-                    + 'Text'
-            )
+        Result := LocalizedColorText('PlanetCongratulations.LiberationStarNormalsFromKling.' + OwnerToSys(CurrentPlanet.OwnerId) + 'Text')
       else
         Result :=
-            LocalizedColorText(
-                'PlanetCongratulations.LiberationStarNormalsFromPirateClan.'
-                    + OwnerToSys(CurrentPlanet.OwnerId)
-                    + 'Text'
-            );
+            LocalizedColorText('PlanetCongratulations.LiberationStarNormalsFromPirateClan.' + OwnerToSys(CurrentPlanet.OwnerId) + 'Text');
     end
     else
     begin
@@ -434,12 +379,7 @@ begin
           Inc(TotalPriority, Priority);
         end;
       end;
-      Roll :=
-          SeededRandomIntRange(
-              1,
-              TotalPriority,
-              Integer(Seed) * ((Integer(Seed) + Galaxy.CurrentTurn) div 20)
-          );
+      Roll := SeededRandomIntRange(1, TotalPriority, Integer(Seed) * ((Integer(Seed) + Galaxy.CurrentTurn) div 20));
       CongratulationsCount := StrToInt(LookupLocalizedTextByKey(Prefix + 'CongratulationsCount'));
       // Native $73EEA1 leaves I untouched when there are no entries.
       // $73EF99 exhausts to CongratulationsCount; a priority match retains its index.
@@ -496,8 +436,7 @@ begin
                         (Self as TRanger).CountProgramsInFilter(RewardPrograms),
                         2,
                         10,
-                        GalaxyDifficultyTuning[Galaxy.DifficultyLevels[7]]
-                            .MaximumQuestProgramRewardCount,
+                        GalaxyDifficultyTuning[Galaxy.DifficultyLevels[7]].MaximumQuestProgramRewardCount,
                         1
                     )
                 ),
@@ -507,12 +446,7 @@ begin
         if GetPlayer = Self then
         begin
           Result := Result + #13#10 + LocalizedColorText(Prefix + 'AddProgramms');
-          ReplaceTextToken(
-              Result,
-              '<Programm>',
-              (Self as TRanger).GetProgramName(ProgramIndex),
-              TextHighlightColorTag
-          );
+          ReplaceTextToken(Result, '<Programm>', (Self as TRanger).GetProgramName(ProgramIndex), TextHighlightColorTag);
           ReplaceTextToken(Result, '<Count>', IntToStr(Quantity), TextHighlightColorTag);
         end
         else
@@ -535,12 +469,7 @@ begin
       if GetPlayer = Self then
       begin
         GetPlayer.ScriptItemsAct(satOnGovItemReward, RewardItem, nil, 0);
-        Result :=
-            Result
-                + #13#10
-                + LocalizedColorText(Prefix + 'AddArtefact')
-                + #13#10
-                + RewardItem.GetDescriptionText;
+        Result := Result + #13#10 + LocalizedColorText(Prefix + 'AddArtefact') + #13#10 + RewardItem.GetDescriptionText;
         ReplaceTextToken(Result, '<Artefact>', RewardItem.GetDisplayName, TextHighlightColorTag);
       end
       else
@@ -575,18 +504,8 @@ begin
       Inventory.Add(ModuleItem);
       if GetPlayer = Self then
       begin
-        Result :=
-            Result
-                + #13#10
-                + LocalizedColorText(Prefix + 'AddNod')
-                + #13#10
-                + ModuleItem.GetInfoText(TextHighlightColorTag, nil);
-        ReplaceTextToken(
-            Result,
-            '<Nod>',
-            MicroModuleTemplates[ModuleIndex].Name,
-            TextHighlightColorTag
-        );
+        Result := Result + #13#10 + LocalizedColorText(Prefix + 'AddNod') + #13#10 + ModuleItem.GetInfoText(TextHighlightColorTag, nil);
+        ReplaceTextToken(Result, '<Nod>', MicroModuleTemplates[ModuleIndex].Name, TextHighlightColorTag);
       end
       else
         Result := '';
@@ -603,12 +522,7 @@ begin
   GainExperience(I, esUnscaled);
   if GetPlayer = Self then
   begin
-    Result :=
-        Result
-            + #13#10
-            + ' '
-            + #13#10
-            + WrapTextInColor(LocalizedColorText(Prefix + 'AddPoints'), DarkGreenColorTag);
+    Result := Result + #13#10 + ' ' + #13#10 + WrapTextInColor(LocalizedColorText(Prefix + 'AddPoints'), DarkGreenColorTag);
     ReplaceTextToken(Result, '<Points>', IntToStr(I), '');
   end
   else
@@ -627,19 +541,9 @@ var
   Award: Byte;
 begin
   if CurrentPlanet <> nil then
-    Award :=
-        SelectAward(
-            RaceToOwner(CurrentPlanet.RaceId),
-            [atLiberation, atAccomplishment],
-            [stKling..rstCustomStation]
-        )
+    Award := SelectAward(RaceToOwner(CurrentPlanet.RaceId), [atLiberation, atAccomplishment], [stKling..rstCustomStation])
   else if DockedTo <> nil then
-    Award :=
-        SelectAward(
-            RaceToOwner(DockedTo.PilotRace),
-            [atLiberation, atAccomplishment],
-            [stKling..rstCustomStation]
-        )
+    Award := SelectAward(RaceToOwner(DockedTo.PilotRace), [atLiberation, atAccomplishment], [stKling..rstCustomStation])
   else
     Award := SelectAward(oiHuman, [atLiberation, atAccomplishment], [stKling..rstCustomStation]);
   AddAward(Award);
@@ -657,10 +561,7 @@ var
   Quest: PQuest;
   QuestTargetKill: Boolean;
 
-  procedure RecordShipKillCategory(
-      Ship: TNormalShip;
-      Victim: TShip
-  ); { Nested helper; unused caller-popped static link. }
+  procedure RecordShipKillCategory(Ship: TNormalShip; Victim: TShip); { Nested helper; unused caller-popped static link. }
   begin
     case Victim.TypeId of
       stTransport:
@@ -716,9 +617,7 @@ begin
     for I := 0 to GetPlayer.Quests.Count - 1 do
     begin
       Quest := GetPlayer.Quests[I];
-      if not Quest.Successful
-          and (Quest.QuestType = qtKillShip)
-          and (Quest.ObjectiveTarget = Victim) then
+      if not Quest.Successful and (Quest.QuestType = qtKillShip) and (Quest.ObjectiveTarget = Victim) then
         QuestTargetKill := True;
     end;
   end;
@@ -767,12 +666,9 @@ begin
       else
         ActivityAmount := 8;
       if Galaxy.CoalitionDefeatedTurn = 0 then
-        (Self as TRanger).AddWarriorCareerActivity(Byte(ActivityAmount));
+        (Self as TRanger).AddWarriorCareerActivity(ActivityAmount);
     end;
-    if (PartnerShip <> nil)
-        and (PartnerShip is TNormalShip)
-        and (PartnerShip.CurrentStar = CurrentStar)
-        and PartnerShip.InNormalSpace then
+    if (PartnerShip <> nil) and (PartnerShip is TNormalShip) and (PartnerShip.CurrentStar = CurrentStar) and PartnerShip.InNormalSpace then
       (PartnerShip as TNormalShip).AddRankPoints(6);
     if OwnerId = oiPirate then
       PirateReward := 8;
@@ -787,11 +683,7 @@ begin
         and PartnerShip.InNormalSpace
         and ((PartnerShip as TNormalShip).CurrentSystemKills.Normal = 0) then
       Inc(TNormalShip(PartnerShip).CurrentSystemKills.Normal);
-    Experience :=
-        Round(
-            NextRandomIntRange(100, 250, Galaxy.RandomState)
-                * (Ord(TNormalShip(Victim).Rank) * 0.1 + 1)
-        );
+    Experience := Round(NextRandomIntRange(100, 250, Galaxy.RandomState) * (Ord(TNormalShip(Victim).Rank) * 0.1 + 1));
     if OwnerId = oiPirate then
     begin
       PirateReward := 8;
@@ -801,7 +693,7 @@ begin
       ActivityAmount := 4
     else
       ActivityAmount := 1;
-    (Self as TRanger).AddPirateCareerActivity(Byte(ActivityAmount));
+    (Self as TRanger).AddPirateCareerActivity(ActivityAmount);
   end
   else if (Victim is TRanger) and (Self is TRanger) then
   begin
@@ -810,11 +702,7 @@ begin
       SourceKind := esPirates;
       RankReward := 10;
       (Self as TRanger).AddWarriorCareerActivity(4);
-      Experience :=
-          Round(
-              NextRandomIntRange(250, 500, Galaxy.RandomState)
-                  * (Ord(TNormalShip(Victim).PirateRank) * 0.1 + 1)
-          );
+      Experience := Round(NextRandomIntRange(250, 500, Galaxy.RandomState) * (Ord(TNormalShip(Victim).PirateRank) * 0.1 + 1));
     end
     else
     begin
@@ -832,12 +720,8 @@ begin
         ActivityAmount := 8
       else
         ActivityAmount := 2;
-      (Self as TRanger).AddPirateCareerActivity(Byte(ActivityAmount));
-      Experience :=
-          Round(
-              NextRandomIntRange(100, 250, Galaxy.RandomState)
-                  * (Ord(TNormalShip(Victim).Rank) * 0.1 + 1)
-          );
+      (Self as TRanger).AddPirateCareerActivity(ActivityAmount);
+      Experience := Round(NextRandomIntRange(100, 250, Galaxy.RandomState) * (Ord(TNormalShip(Victim).Rank) * 0.1 + 1));
       if OwnerId = oiPirate then
       begin
         PirateReward := 24;
@@ -875,11 +759,7 @@ begin
     Inc(PirateKillCount);
     if GetPlayer = Self then
       TryAddAchievementProgress('SHIELD', 1);
-    Experience :=
-        Round(
-            NextRandomIntRange(250, 500, Galaxy.RandomState)
-                * (Ord(TNormalShip(Victim).PirateRank) * 0.1 + 1)
-        );
+    Experience := Round(NextRandomIntRange(250, 500, Galaxy.RandomState) * (Ord(TNormalShip(Victim).PirateRank) * 0.1 + 1));
     RankReward := 10;
     if OwnerId = oiPirate then
       Experience := Experience div 2;
@@ -893,11 +773,7 @@ begin
       Inc(GetPlayer.DominatorKillsByType[(Victim as TKling).KlingType]);
     IncrementWordSaturating(CurrentSystemKills.Dominator);
     RankReward := DominatorShipDefinitions[(Victim as TKling).KlingType].RankPoints;
-    Experience :=
-        Round(
-            DominatorShipDefinitions[(Victim as TKling).KlingType].KillExperience
-                * Galaxy.GetDominatorKillExperienceScale
-        );
+    Experience := Round(DominatorShipDefinitions[(Victim as TKling).KlingType].KillExperience * Galaxy.GetDominatorKillExperienceScale);
     SourceKind := esDominators;
     if Self is TRanger then
     begin
@@ -906,20 +782,15 @@ begin
       else
         ActivityAmount := 8;
       if Galaxy.CoalitionDefeatedTurn = 0 then
-        (Self as TRanger).AddWarriorCareerActivity(Byte(ActivityAmount));
+        (Self as TRanger).AddWarriorCareerActivity(ActivityAmount);
       if GetPlayer = Self then
         GetPlayer.TryAwardDominatorPrograms(Victim);
       if (GetPlayer = Self) and GetPlayer.HasRadiationSickness then
         Experience := Round(GetPlayer.RadiationHealth[1].Progress * Experience);
     end;
-    if (PartnerShip <> nil)
-        and (PartnerShip is TNormalShip)
-        and (PartnerShip.CurrentStar = CurrentStar)
-        and PartnerShip.InNormalSpace then
+    if (PartnerShip <> nil) and (PartnerShip is TNormalShip) and (PartnerShip.CurrentStar = CurrentStar) and PartnerShip.InNormalSpace then
     begin
-      (PartnerShip as TNormalShip)
-          .AddRankPoints(
-              DominatorShipDefinitions[(Victim as TKling).KlingType].RankPoints div 2 + 1);
+      (PartnerShip as TNormalShip).AddRankPoints(DominatorShipDefinitions[(Victim as TKling).KlingType].RankPoints div 2 + 1);
       if (PartnerShip as TNormalShip).CurrentSystemKills.Dominator = 0 then
         Inc(TNormalShip(PartnerShip).CurrentSystemKills.Dominator);
     end;
@@ -937,11 +808,7 @@ begin
       Inc(TNormalShip(PartnerShip).CurrentSystemKills.Normal);
     if OwnerId = oiPirate then
     begin
-      Experience :=
-          Round(
-              NextRandomIntRange(250, 500, Galaxy.RandomState)
-                  * (Ord(TNormalShip(Victim).Rank) * 0.1 + 1)
-          );
+      Experience := Round(NextRandomIntRange(250, 500, Galaxy.RandomState) * (Ord(TNormalShip(Victim).Rank) * 0.1 + 1));
       if (Victim as TWarrior).WarriorType = wtFlagship then
       begin
         Experience := Experience * 2;
@@ -956,7 +823,7 @@ begin
         ActivityAmount := 8
       else
         ActivityAmount := 2;
-      (Self as TRanger).AddPirateCareerActivity(Byte(ActivityAmount));
+      (Self as TRanger).AddPirateCareerActivity(ActivityAmount);
     end;
   end
   else if Victim.TypeId = stTransport then
@@ -971,8 +838,7 @@ begin
     if OwnerId = oiPirate then
       PirateReward := 8;
   end
-  else if (Victim.TypeId in [rstRangerCenter..rstCustomStation])
-      and (Victim.CurrentStanding = ssCoalitionMilitary) then
+  else if (Victim.TypeId in [rstRangerCenter..rstCustomStation]) and (Victim.CurrentStanding = ssCoalitionMilitary) then
   begin
     IncrementWordSaturating(CurrentSystemKills.Normal);
     if (PartnerShip <> nil)
@@ -989,11 +855,10 @@ begin
         ActivityAmount := 8
       else
         ActivityAmount := 2;
-      (Self as TRanger).AddPirateCareerActivity(Byte(ActivityAmount));
+      (Self as TRanger).AddPirateCareerActivity(ActivityAmount);
     end;
   end
-  else if (Victim.TypeId in [rstRangerCenter..rstCustomStation])
-      and (Victim.CurrentStanding = ssCoalitionActive) then
+  else if (Victim.TypeId in [rstRangerCenter..rstCustomStation]) and (Victim.CurrentStanding = ssCoalitionActive) then
   begin
     Inc(CurrentSystemKills.Normal);
     if (PartnerShip <> nil)
@@ -1010,11 +875,10 @@ begin
         ActivityAmount := 4
       else
         ActivityAmount := 1;
-      (Self as TRanger).AddPirateCareerActivity(Byte(ActivityAmount));
+      (Self as TRanger).AddPirateCareerActivity(ActivityAmount);
     end;
   end
-  else if (Victim.TypeId in [rstRangerCenter..rstCustomStation])
-      and (Victim.CurrentStanding in [ssCoalitionPassive..ssPiratePassive]) then
+  else if (Victim.TypeId in [rstRangerCenter..rstCustomStation]) and (Victim.CurrentStanding in [ssCoalitionPassive..ssPiratePassive]) then
   begin
     if CurrentStar.ControlFaction = sfCoalition then
     begin
@@ -1042,7 +906,7 @@ begin
         ActivityAmount := 4
       else
         ActivityAmount := 1;
-      (Self as TRanger).AddPirateCareerActivity(Byte(ActivityAmount));
+      (Self as TRanger).AddPirateCareerActivity(ActivityAmount);
     end;
     if (Victim.TypeId = rstPirateBase) and (Self is TRanger) then
     begin
@@ -1050,11 +914,10 @@ begin
         ActivityAmount := 4
       else
         ActivityAmount := 1;
-      (Self as TRanger).AddWarriorCareerActivity(Byte(ActivityAmount));
+      (Self as TRanger).AddWarriorCareerActivity(ActivityAmount);
     end;
   end
-  else if (Victim.TypeId in [rstRangerCenter..rstCustomStation])
-      and (Victim.CurrentStanding in [ssPirateActive..ssPirateMilitary]) then
+  else if (Victim.TypeId in [rstRangerCenter..rstCustomStation]) and (Victim.CurrentStanding in [ssPirateActive..ssPirateMilitary]) then
   begin
     if CurrentStar.ControlFaction = sfPirates then
     begin
@@ -1072,7 +935,7 @@ begin
         ActivityAmount := 4
       else
         ActivityAmount := 1;
-      (Self as TRanger).AddWarriorCareerActivity(Byte(ActivityAmount));
+      (Self as TRanger).AddWarriorCareerActivity(ActivityAmount);
     end;
   end;
   if Victim.CurrentStanding <> ssCustom then
@@ -1106,16 +969,9 @@ begin
     if Experience > 0 then
     begin
       GainExperience(Experience, SourceKind);
-      if (PartnerShip <> nil)
-          and (PartnerShip.CurrentStar = CurrentStar)
-          and PartnerShip.InNormalSpace then
+      if (PartnerShip <> nil) and (PartnerShip.CurrentStar = CurrentStar) and PartnerShip.InNormalSpace then
       begin
-        SharedExperience :=
-            Round(
-                Experience
-                    * LeadershipExperiencePercent[PartnerShip.GetEffectiveSkillLevel(psLeadership)]
-                    * 0.01
-            );
+        SharedExperience := Round(Experience * LeadershipExperiencePercent[PartnerShip.GetEffectiveSkillLevel(psLeadership)] * 0.01);
         if GetPlayer = PartnerShip then
         begin
           Event := AddGalaxyEvent('PlayerGotExpFromPartner');
@@ -1154,9 +1010,7 @@ begin
     for I := 0 to CurrentStar.Ships.Count - 1 do
     begin
       OtherShip := CurrentStar.Ships[I];
-      if (OtherShip = Self)
-          or not OtherShip.InNormalSpace
-          or not OtherShip.IsAttackingShip(Victim) then
+      if (OtherShip = Self) or not OtherShip.InNormalSpace or not OtherShip.IsAttackingShip(Victim) then
         Continue;
       if (OtherShip is TTranclucator) and (GetPlayer = TTranclucator(OtherShip).OwnerShip) then
       begin
@@ -1252,8 +1106,7 @@ begin
         if GetPlayer = OtherShip then
           Inc(GetPlayer.DominatorKillsByType[(Victim as TKling).KlingType]);
       end
-      else if (Victim is TPirate)
-          or ((Victim is TRanger) and ((Victim as TRanger).GetDominantCareer = rcPirate)) then
+      else if (Victim is TPirate) or ((Victim is TRanger) and ((Victim as TRanger).GetDominantCareer = rcPirate)) then
       begin
         if (Victim.OwnerId = oiPirate) and not QuestTargetKill then
           IncrementWordSaturating(OtherNormal.CurrentSystemKills.Pirate);
@@ -1268,9 +1121,7 @@ begin
       end
       else if (Victim.TypeId in [rstRangerCenter..rstCustomStation])
           and (Victim.CurrentStanding in FactionStandingMasks[CurrentStar.ControlFaction]) then
-        IncrementWordSaturating(
-            TSystemKillCountArray(OtherNormal.CurrentSystemKills)[Ord(CurrentStar.ControlFaction)]
-        );
+        IncrementWordSaturating(OtherNormal.CurrentSystemKills.ByFaction[CurrentStar.ControlFaction]);
       RecordShipKillCategory(OtherNormal, Victim);
     end;
   end;
@@ -1284,9 +1135,7 @@ var
   Planet, CeremonyPlanet: TPlanet;
   Text: WideString;
 
-  procedure LogPlayerEvent(
-      Ship: TShip
-  ); { Nested helper; caller-popped link, Star at ParentFrame-4. }
+  procedure LogPlayerEvent(Ship: TShip); { Nested helper; caller-popped link, Star at ParentFrame-4. }
   var
     Event: TGalaxyEvent;
   begin
@@ -1311,15 +1160,11 @@ begin
       begin
         Normal := Ship as TNormalShip;
         Normal.PendingLiberationCeremonyPlanet := nil;
-        if ((Normal.CurrentSystemKills.Dominator > 0)
-                and (Star.PreviousControlFaction = sfDominators))
-            or ((Normal.CurrentSystemKills.Pirate > 0)
-                and (Star.PreviousControlFaction = sfPirates)
-                and (Normal.OwnerId <> oiPirate))
+        if ((Normal.CurrentSystemKills.Dominator > 0) and (Star.PreviousControlFaction = sfDominators))
+            or ((Normal.CurrentSystemKills.Pirate > 0) and (Star.PreviousControlFaction = sfPirates) and (Normal.OwnerId <> oiPirate))
             or ((GetPlayer <> Ship)
                 and (Ship.DaysSincePlayerSeen > 1)
-                and (Normal.DominatorKillCount + Normal.PirateKillCount
-                    > Normal.LiberatedSystemCount)) then
+                and (Normal.DominatorKillCount + Normal.PirateKillCount > Normal.LiberatedSystemCount)) then
         begin
           if Star.PreviousControlFaction = sfDominators then
             Normal.PendingLiberationContribution := Normal.CurrentSystemKills.Dominator;
@@ -1355,10 +1200,7 @@ begin
       begin
         Text :=
             FormatText3(
-                PickLocalizedTextVariant(
-                    'GalaxyNews.Globals.NormalsTakeSystemFromKling',
-                    SourceShip.Seed * (Galaxy.CurrentTurn div 10)
-                ),
+                PickLocalizedTextVariant('GalaxyNews.Globals.NormalsTakeSystemFromKling', SourceShip.Seed * (Galaxy.CurrentTurn div 10)),
                 TextHighlightColorTag,
                 '<Star>',
                 Star.Name,
@@ -1407,15 +1249,11 @@ begin
       begin
         Normal := Ship as TNormalShip;
         Normal.PendingLiberationCeremonyPlanet := nil;
-        if ((Normal.CurrentSystemKills.Dominator > 0)
-                and (Star.PreviousControlFaction = sfDominators))
-            or ((Normal.CurrentSystemKills.Normal > 0)
-                and (Star.PreviousControlFaction = sfCoalition)
-                and (Normal.OwnerId = oiPirate))
+        if ((Normal.CurrentSystemKills.Dominator > 0) and (Star.PreviousControlFaction = sfDominators))
+            or ((Normal.CurrentSystemKills.Normal > 0) and (Star.PreviousControlFaction = sfCoalition) and (Normal.OwnerId = oiPirate))
             or ((GetPlayer <> Ship)
                 and (Ship.DaysSincePlayerSeen > 1)
-                and (Normal.MilitaryKillCount + Normal.DominatorKillCount
-                    > Normal.LiberatedSystemCount)) then
+                and (Normal.MilitaryKillCount + Normal.DominatorKillCount > Normal.LiberatedSystemCount)) then
         begin
           if Star.PreviousControlFaction = sfDominators then
             Normal.PendingLiberationContribution := Normal.CurrentSystemKills.Dominator;
@@ -1442,10 +1280,7 @@ begin
           if GetPlayer = Ship then
           begin
             Inc(GetPlayer.AchievementStats.SystemsCapturedForPirates);
-            TrySetAchievementProgress(
-                'PIRATE',
-                GetPlayer.AchievementStats.SystemsCapturedForPirates
-            );
+            TrySetAchievementProgress('PIRATE', GetPlayer.AchievementStats.SystemsCapturedForPirates);
           end;
         end;
       end;
@@ -1454,10 +1289,7 @@ begin
     begin
       Text :=
           FormatText3(
-              PickLocalizedTextVariant(
-                  'GalaxyNews.Globals.PirateClanTakeSystemFromNormals',
-                  SourceShip.Seed * (Galaxy.CurrentTurn div 10)
-              ),
+              PickLocalizedTextVariant('GalaxyNews.Globals.PirateClanTakeSystemFromNormals', SourceShip.Seed * (Galaxy.CurrentTurn div 10)),
               TextHighlightColorTag,
               '<Star>',
               Star.Name,
@@ -1474,10 +1306,7 @@ begin
       if Galaxy.CoalitionDefeatedTurn = 0 then
         Text :=
             FormatText3(
-                PickLocalizedTextVariant(
-                    'GalaxyNews.Globals.PirateClanTakeSystemFromKling',
-                    SourceShip.Seed * (Galaxy.CurrentTurn div 10)
-                ),
+                PickLocalizedTextVariant('GalaxyNews.Globals.PirateClanTakeSystemFromKling', SourceShip.Seed * (Galaxy.CurrentTurn div 10)),
                 TextHighlightColorTag,
                 '<Star>',
                 Star.Name,
@@ -1544,17 +1373,8 @@ procedure TNormalShip.CheckKillCountAwards(Victim: TShip);
           if GetPlayer = Self then
           begin
             ShipTypeName := ShipTypeNames[VictimType].Name;
-            Text :=
-                PickLocalizedTextVariant(
-                    'GalaxyNews.BadReward.Kill' + ShipTypeName,
-                    Seed + Cardinal(Galaxy.CurrentTurn div 10)
-                );
-            ReplaceTextToken(
-                Text,
-                '<Reward>',
-                GetAwardInfo(Byte(Award)).Name,
-                TextHighlightColorTag
-            );
+            Text := PickLocalizedTextVariant('GalaxyNews.BadReward.Kill' + ShipTypeName, Seed + Cardinal(Galaxy.CurrentTurn div 10));
+            ReplaceTextToken(Text, '<Reward>', GetAwardInfo(Byte(Award)).Name, TextHighlightColorTag);
             AddOrUpdatePlayerBubble(pmGalaxyNews, Galaxy.CurrentTurn, Text, '');
           end;
         end;
@@ -1596,9 +1416,7 @@ begin
         begin
           if (GetPlayer = Ship) or (NextRandomUnitFloat(RandomState) <= 0.1) then
           begin
-            Change :=
-                (Target.OrderTarget <> Ranger)
-                    and (Target.GetRelationLevelToShip(Ranger) = rlHostile);
+            Change := (Target.OrderTarget <> Ranger) and (Target.GetRelationLevelToShip(Ranger) = rlHostile);
             if Change then
               ChangeRelationToRanger(Ranger, -2);
           end;
@@ -1614,11 +1432,7 @@ begin
   end;
 end;
 
-function TNormalShip.SelectAward(
-    Owner: TOwnerId;
-    Kinds: TAwardTypeMask;
-    VictimTypes: TShipTypeMask
-): Byte;
+function TNormalShip.SelectAward(Owner: TOwnerId; Kinds: TAwardTypeMask; VictimTypes: TShipTypeMask): Byte;
 var
   I, Count: Integer;
   Candidates: TList;
@@ -1629,9 +1443,7 @@ begin
   for I := 0 to Count do
     if MatchesOwnerName(Owner, LookupLocalizedTextByKey('Reward.' + IntToStr(I) + '.Race'))
         and (SysToReward(LookupLocalizedTextByKey('Reward.' + IntToStr(I) + '.Type')) in Kinds)
-        and MatchesCareerName(
-            GetDominantCareer,
-            LookupLocalizedTextByKey('Reward.' + IntToStr(I) + '.Status')) then
+        and MatchesCareerName(GetDominantCareer, LookupLocalizedTextByKey('Reward.' + IntToStr(I) + '.Status')) then
     begin
       KillName := LocalizedText('Reward.' + IntToStr(I) + '.Kill');
       if (Length(KillName) = 0) or (SysToShipType(KillName) in VictimTypes) then
@@ -1639,38 +1451,11 @@ begin
     end;
   if Candidates.Count > 0 then
   begin
-    Result :=
-        Byte(
-            Candidates[
-                SeededRandomIntRange(
-                    0,
-                    Candidates.Count - 1,
-                    (Integer(Seed) + Galaxy.CurrentTurn) div 101
-                )
-            ]
-        );
+    Result := Byte(Candidates[SeededRandomIntRange(0, Candidates.Count - 1, (Integer(Seed) + Galaxy.CurrentTurn) div 101)]);
     if (AwardIds <> nil) and (AwardIds.IndexOf(Pointer(Result)) >= 0) then
-      Result :=
-          Byte(
-              Candidates[
-                  SeededRandomIntRange(
-                      0,
-                      Candidates.Count - 1,
-                      (Integer(Seed) + 2 * Galaxy.CurrentTurn) div 101
-                  )
-              ]
-          );
+      Result := Byte(Candidates[SeededRandomIntRange(0, Candidates.Count - 1, (Integer(Seed) + 2 * Galaxy.CurrentTurn) div 101)]);
     if (AwardIds <> nil) and (AwardIds.IndexOf(Pointer(Result)) >= 0) then
-      Result :=
-          Byte(
-              Candidates[
-                  SeededRandomIntRange(
-                      0,
-                      Candidates.Count - 1,
-                      (Integer(Seed) + 3 * Galaxy.CurrentTurn) div 101
-                  )
-              ]
-          );
+      Result := Byte(Candidates[SeededRandomIntRange(0, Candidates.Count - 1, (Integer(Seed) + 3 * Galaxy.CurrentTurn) div 101)]);
   end
   else
     Result := AwardNotFound;
@@ -1718,10 +1503,7 @@ var
 begin
   Needed := GetRankPointsToNextRank;
   Inc(RankPoints, Min(Amount, Needed));
-  if (Needed > 0)
-      and (GetPlayer = Self)
-      and GetPlayer.CanPromoteRank
-      and (Galaxy.CoalitionDefeatedTurn = 0) then
+  if (Needed > 0) and (GetPlayer = Self) and GetPlayer.CanPromoteRank and (Galaxy.CoalitionDefeatedTurn = 0) then
     AddOrUpdatePlayerBubble(
         pmGalaxyNews,
         Galaxy.CurrentTurn,
@@ -1852,8 +1634,7 @@ begin
     Minimum := 0;
     LastIndex := ShipGreetingCount - 1;
     ShuffleDefinitions;
-    EntryIndex :=
-        SeededRandomIntRange(0, LastIndex, Integer(Seed * Cardinal(Galaxy.CurrentTurn)) div 20);
+    EntryIndex := SeededRandomIntRange(0, LastIndex, Integer(Seed * Cardinal(Galaxy.CurrentTurn)) div 20);
     for I := 0 to LastIndex do
     begin
       MessageText := '';
@@ -1861,29 +1642,20 @@ begin
       if IsFemaleHumanPilot <> (Definitions[EntryIndex].Female = 0) then
         Continue;
       if (Definitions[EntryIndex].CoalitionAlreadyDefeated <> gcAny)
-          and (((Definitions[EntryIndex].CoalitionAlreadyDefeated = gcYes)
-                  and (not (Galaxy.CoalitionDefeatedTurn <> 0)))
-              or ((Definitions[EntryIndex].CoalitionAlreadyDefeated = gcNo)
-                  and (Galaxy.CoalitionDefeatedTurn <> 0))) then
+          and (((Definitions[EntryIndex].CoalitionAlreadyDefeated = gcYes) and (not (Galaxy.CoalitionDefeatedTurn <> 0)))
+              or ((Definitions[EntryIndex].CoalitionAlreadyDefeated = gcNo) and (Galaxy.CoalitionDefeatedTurn <> 0))) then
         Continue;
       if (Definitions[EntryIndex].DominatorsAlreadyDefeated <> gcAny)
           and (((Definitions[EntryIndex].DominatorsAlreadyDefeated = gcYes)
-                  and (not (not Galaxy.HasUnresolvedDominatorSeries(
-                      [dsBlazer, dsKeller, dsTerron]))))
+                  and (not (not Galaxy.HasUnresolvedDominatorSeries([dsBlazer, dsKeller, dsTerron]))))
               or ((Definitions[EntryIndex].DominatorsAlreadyDefeated = gcNo)
-                  and (not Galaxy.HasUnresolvedDominatorSeries(
-                      [dsBlazer, dsKeller, dsTerron])))) then
+                  and (not Galaxy.HasUnresolvedDominatorSeries([dsBlazer, dsKeller, dsTerron])))) then
         Continue;
       if BestPriority > 0 then
       begin
         CandidatePriority := Definitions[EntryIndex].Priority;
-        if CandidatePriority
-                * SeededRandomIntRange(1, 100, Seed + EntryIndex * (Galaxy.CurrentTurn div 20))
-            < BestPriority
-                * SeededRandomIntRange(
-                    1,
-                    100,
-                    Seed + EntryIndex * (Galaxy.CurrentTurn div 20) * 3) then
+        if CandidatePriority * SeededRandomIntRange(1, 100, Seed + EntryIndex * (Galaxy.CurrentTurn div 20))
+            < BestPriority * SeededRandomIntRange(1, 100, Seed + EntryIndex * (Galaxy.CurrentTurn div 20) * 3) then
           Continue;
       end;
       Good := NoGreetingGoods;
@@ -1906,22 +1678,18 @@ begin
             Continue;
           if CurrentStar.Status.CustomFaction <> '' then
             Continue;
-          if (Definitions[EntryIndex].ToPlanetRace <> [])
-              and not (Planet.RaceId in Definitions[EntryIndex].ToPlanetRace) then
+          if (Definitions[EntryIndex].ToPlanetRace <> []) and not (Planet.RaceId in Definitions[EntryIndex].ToPlanetRace) then
             Continue;
           if (Definitions[EntryIndex].ToPlanetRelations <> [])
-              and not (Planet.GetRelationLevelToShip(GetPlayer)
-                  in Definitions[EntryIndex].ToPlanetRelations) then
+              and not (Planet.GetRelationLevelToShip(GetPlayer) in Definitions[EntryIndex].ToPlanetRelations) then
             Continue;
           if Good <> NoGreetingGoods then
           begin
             if (Definitions[EntryIndex].ToPlanetGoodsCnt <> [])
-                and not (Galaxy.ClassifyGoodsQuantity(Planet.Goods[Good].Count, Good)
-                    in Definitions[EntryIndex].ToPlanetGoodsCnt) then
+                and not (Galaxy.ClassifyGoodsQuantity(Planet.Goods[Good].Count, Good) in Definitions[EntryIndex].ToPlanetGoodsCnt) then
               Continue;
             if (Definitions[EntryIndex].ToPlanetGoodsSale <> [])
-                and not (Galaxy
-                        .ClassifyGoodsPrice(GetPlayer.ShopGoodsPurchasePrice(Good, Planet), Good)
+                and not (Galaxy.ClassifyGoodsPrice(GetPlayer.ShopGoodsPurchasePrice(Good, Planet), Good)
                     in Definitions[EntryIndex].ToPlanetGoodsSale) then
               Continue;
             if (Definitions[EntryIndex].ToPlanetGoodsBuy <> [])
@@ -1930,54 +1698,37 @@ begin
               Continue;
           end;
           if (Definitions[EntryIndex].ToPlanetIsHomePlanet <> gcAny)
-              and (((Definitions[EntryIndex].ToPlanetIsHomePlanet = gcYes)
-                      and (not (HomePlanet = Planet)))
-                  or ((Definitions[EntryIndex].ToPlanetIsHomePlanet = gcNo)
-                      and (HomePlanet = Planet))) then
+              and (((Definitions[EntryIndex].ToPlanetIsHomePlanet = gcYes) and (not (HomePlanet = Planet)))
+                  or ((Definitions[EntryIndex].ToPlanetIsHomePlanet = gcNo) and (HomePlanet = Planet))) then
             Continue;
           if (Definitions[EntryIndex].ToPlanetRaceIsShipRace <> gcAny)
-              and (((Definitions[EntryIndex].ToPlanetRaceIsShipRace = gcYes)
-                      and (not (Planet.RaceId = PilotRace)))
-                  or ((Definitions[EntryIndex].ToPlanetRaceIsShipRace = gcNo)
-                      and (Planet.RaceId = PilotRace))) then
+              and (((Definitions[EntryIndex].ToPlanetRaceIsShipRace = gcYes) and (not (Planet.RaceId = PilotRace)))
+                  or ((Definitions[EntryIndex].ToPlanetRaceIsShipRace = gcNo) and (Planet.RaceId = PilotRace))) then
             Continue;
           if (Definitions[EntryIndex].ToPlanetRaceIsPlayerRace <> gcAny)
-              and (((Definitions[EntryIndex].ToPlanetRaceIsPlayerRace = gcYes)
-                      and (not (GetPlayer.PilotRace = Planet.RaceId)))
-                  or ((Definitions[EntryIndex].ToPlanetRaceIsPlayerRace = gcNo)
-                      and (GetPlayer.PilotRace = Planet.RaceId))) then
+              and (((Definitions[EntryIndex].ToPlanetRaceIsPlayerRace = gcYes) and (not (GetPlayer.PilotRace = Planet.RaceId)))
+                  or ((Definitions[EntryIndex].ToPlanetRaceIsPlayerRace = gcNo) and (GetPlayer.PilotRace = Planet.RaceId))) then
             Continue;
-          if (Definitions[EntryIndex].ToPlanetEconomy <> [])
-              and not (Planet.Economy in Definitions[EntryIndex].ToPlanetEconomy) then
+          if (Definitions[EntryIndex].ToPlanetEconomy <> []) and not (Planet.Economy in Definitions[EntryIndex].ToPlanetEconomy) then
             Continue;
           if (Definitions[EntryIndex].ToPlanetGovernment <> [])
               and not (Planet.Government in Definitions[EntryIndex].ToPlanetGovernment) then
             Continue;
           if (Definitions[EntryIndex].ToPlanetIsLastPlanet <> gcAny)
-              and (((Definitions[EntryIndex].ToPlanetIsLastPlanet = gcYes)
-                      and (not (LastDockedPlanet = Planet)))
-                  or ((Definitions[EntryIndex].ToPlanetIsLastPlanet = gcNo)
-                      and (LastDockedPlanet = Planet))) then
+              and (((Definitions[EntryIndex].ToPlanetIsLastPlanet = gcYes) and (not (LastDockedPlanet = Planet)))
+                  or ((Definitions[EntryIndex].ToPlanetIsLastPlanet = gcNo) and (LastDockedPlanet = Planet))) then
             Continue;
           if Definitions[EntryIndex].ToPlanetRaceIsLastPlanetRace <> gcAny then
           begin
             if not (LastDockedPlanet.OwnerId in [oiMaloc..oiGaal, oiPirate]) then
               Continue;
-            if (((Definitions[EntryIndex].ToPlanetRaceIsLastPlanetRace = gcYes)
-                    and (not (Planet.RaceId = LastDockedPlanet.RaceId)))
-                or ((Definitions[EntryIndex].ToPlanetRaceIsLastPlanetRace = gcNo)
-                    and (Planet.RaceId = LastDockedPlanet.RaceId))) then
+            if (((Definitions[EntryIndex].ToPlanetRaceIsLastPlanetRace = gcYes) and (not (Planet.RaceId = LastDockedPlanet.RaceId)))
+                or ((Definitions[EntryIndex].ToPlanetRaceIsLastPlanetRace = gcNo) and (Planet.RaceId = LastDockedPlanet.RaceId))) then
               Continue;
           end;
+          MessageText := LocalizedColorText('ShipGreetings.' + Definitions[EntryIndex].Name + '.Text');
           MessageText :=
-              LocalizedColorText('ShipGreetings.' + Definitions[EntryIndex].Name + '.Text');
-          MessageText :=
-              ReplaceColoredToken(
-                  MessageText,
-                  '<ToPlanet>',
-                  Planet.Name + GetLocalObjectLink(Planet, Automatic),
-                  TextHighlightColorTag
-              );
+              ReplaceColoredToken(MessageText, '<ToPlanet>', Planet.Name + GetLocalObjectLink(Planet, Automatic), TextHighlightColorTag);
           if Good <> NoGreetingGoods then
           begin
             MessageText :=
@@ -2001,16 +1752,12 @@ begin
           if not (OrderTarget is TStar) then
             Continue;
           if (Definitions[EntryIndex].HomePlanetInToStar <> gcAny)
-              and (((Definitions[EntryIndex].HomePlanetInToStar = gcYes)
-                      and (not (HomePlanet.CurrentStar = OrderTarget)))
-                  or ((Definitions[EntryIndex].HomePlanetInToStar = gcNo)
-                      and (HomePlanet.CurrentStar = OrderTarget))) then
+              and (((Definitions[EntryIndex].HomePlanetInToStar = gcYes) and (not (HomePlanet.CurrentStar = OrderTarget)))
+                  or ((Definitions[EntryIndex].HomePlanetInToStar = gcNo) and (HomePlanet.CurrentStar = OrderTarget))) then
             Continue;
           if (Definitions[EntryIndex].HomePlanetInCurStar <> gcAny)
-              and (((Definitions[EntryIndex].HomePlanetInCurStar = gcYes)
-                      and (not (HomePlanet.CurrentStar = CurrentStar)))
-                  or ((Definitions[EntryIndex].HomePlanetInCurStar = gcNo)
-                      and (HomePlanet.CurrentStar = CurrentStar))) then
+              and (((Definitions[EntryIndex].HomePlanetInCurStar = gcYes) and (not (HomePlanet.CurrentStar = CurrentStar)))
+                  or ((Definitions[EntryIndex].HomePlanetInCurStar = gcNo) and (HomePlanet.CurrentStar = CurrentStar))) then
             Continue;
           Rejected := False;
           for ShipKind := stKling to stWarrior do
@@ -2028,9 +1775,7 @@ begin
               for K := 0 to (OrderTarget as TStar).Ships.Count - 1 do
               begin
                 Other := (OrderTarget as TStar).Ships[K];
-                if not Other.HasScriptStateText
-                    and (Other.TypeNameOverrideKey = '')
-                    and (Other.TypeId = ShipKind) then
+                if not Other.HasScriptStateText and (Other.TypeNameOverrideKey = '') and (Other.TypeId = ShipKind) then
                   Inc(Count);
               end;
               Count := Min(10, Count);
@@ -2047,37 +1792,24 @@ begin
           begin
             if (OrderTarget as TStar).Status.CustomFaction <> '' then
               Continue;
-            if (((Definitions[EntryIndex].ToStarControlByKling = gcYes)
-                    and (not ((OrderTarget as TStar).ControlFaction = sfDominators)))
-                or ((Definitions[EntryIndex].ToStarControlByKling = gcNo)
-                    and ((OrderTarget as TStar).ControlFaction = sfDominators))) then
+            if (((Definitions[EntryIndex].ToStarControlByKling = gcYes) and (not ((OrderTarget as TStar).ControlFaction = sfDominators)))
+                or ((Definitions[EntryIndex].ToStarControlByKling = gcNo) and ((OrderTarget as TStar).ControlFaction = sfDominators))) then
               Continue;
           end;
           if Definitions[EntryIndex].ToStarControlByPirates <> gcAny then
           begin
             if (OrderTarget as TStar).Status.CustomFaction <> '' then
               Continue;
-            if (((Definitions[EntryIndex].ToStarControlByPirates = gcYes)
-                    and (not ((OrderTarget as TStar).ControlFaction = sfPirates)))
-                or ((Definitions[EntryIndex].ToStarControlByPirates = gcNo)
-                    and ((OrderTarget as TStar).ControlFaction = sfPirates))) then
+            if (((Definitions[EntryIndex].ToStarControlByPirates = gcYes) and (not ((OrderTarget as TStar).ControlFaction = sfPirates)))
+                or ((Definitions[EntryIndex].ToStarControlByPirates = gcNo) and ((OrderTarget as TStar).ControlFaction = sfPirates))) then
               Continue;
           end;
           if (Definitions[EntryIndex].ToStarInBattle <> gcAny)
-              and (((Definitions[EntryIndex].ToStarInBattle = gcYes)
-                      and (not ((OrderTarget as TStar).Battle <> 0)))
-                  or ((Definitions[EntryIndex].ToStarInBattle = gcNo)
-                      and ((OrderTarget as TStar).Battle <> 0))) then
+              and (((Definitions[EntryIndex].ToStarInBattle = gcYes) and (not ((OrderTarget as TStar).Battle <> 0)))
+                  or ((Definitions[EntryIndex].ToStarInBattle = gcNo) and ((OrderTarget as TStar).Battle <> 0))) then
             Continue;
-          MessageText :=
-              LocalizedColorText('ShipGreetings.' + Definitions[EntryIndex].Name + '.Text');
-          MessageText :=
-              ReplaceColoredToken(
-                  MessageText,
-                  '<ToStar>',
-                  (OrderTarget as TStar).Name,
-                  TextHighlightColorTag
-              );
+          MessageText := LocalizedColorText('ShipGreetings.' + Definitions[EntryIndex].Name + '.Text');
+          MessageText := ReplaceColoredToken(MessageText, '<ToStar>', (OrderTarget as TStar).Name, TextHighlightColorTag);
         end
         else if Definitions[EntryIndex].FlyType = gfToItem then
         begin
@@ -2093,15 +1825,11 @@ begin
                 or (GetPickupApproachPosition(Item.Position).Y = OrderDestination.Y) then
             begin
               ItemTypes := Definitions[EntryIndex].ItemType;
-              if (ItemTypes = '')
-                  or (ItemTypes = 'Any')
-                  or (FindTextPosW(Item.GetCategoryConfigName, ItemTypes) <> 0) then
+              if (ItemTypes = '') or (ItemTypes = 'Any') or (FindTextPosW(Item.GetCategoryConfigName, ItemTypes) <> 0) then
               begin
                 if (Definitions[EntryIndex].ShipNeedInItem <> gcAny)
-                    and (((Definitions[EntryIndex].ShipNeedInItem = gcYes)
-                            and not ShouldPickUpItem(Item))
-                        or ((Definitions[EntryIndex].ShipNeedInItem = gcNo)
-                            and ShouldPickUpItem(Item))) then
+                    and (((Definitions[EntryIndex].ShipNeedInItem = gcYes) and not ShouldPickUpItem(Item))
+                        or ((Definitions[EntryIndex].ShipNeedInItem = gcNo) and ShouldPickUpItem(Item))) then
                   Continue;
                 Rejected := True;
                 Break;
@@ -2110,45 +1838,32 @@ begin
           end;
           if not Rejected then
             Continue;
+          MessageText := LocalizedColorText('ShipGreetings.' + Definitions[EntryIndex].Name + '.Text');
           MessageText :=
-              LocalizedColorText('ShipGreetings.' + Definitions[EntryIndex].Name + '.Text');
-          MessageText :=
-              ReplaceColoredToken(
-                  MessageText,
-                  '<Item>',
-                  Item.GetDisplayName + GetLocalObjectLink(Item, Automatic),
-                  TextHighlightColorTag
-              );
+              ReplaceColoredToken(MessageText, '<Item>', Item.GetDisplayName + GetLocalObjectLink(Item, Automatic), TextHighlightColorTag);
         end
         else if Definitions[EntryIndex].FlyType = gfToShip then
         begin
           if not (OrderTarget is TShip) then
             Continue;
           if (Definitions[EntryIndex].ToShipType <> [])
-              and not ((OrderTarget as TShip).GetGreetingShipCategory
-                  in Definitions[EntryIndex].ToShipType) then
+              and not ((OrderTarget as TShip).GetGreetingShipCategory in Definitions[EntryIndex].ToShipType) then
             Continue;
           if (Definitions[EntryIndex].ToShipRace <> [])
               and not ((OrderTarget as TShip).PilotRace in Definitions[EntryIndex].ToShipRace) then
             Continue;
           if (Definitions[EntryIndex].ToShipInPlanet <> gcAny)
-              and (((Definitions[EntryIndex].ToShipInPlanet = gcYes)
-                      and (not ((OrderTarget as TShip).CurrentPlanet <> nil)))
-                  or ((Definitions[EntryIndex].ToShipInPlanet = gcNo)
-                      and ((OrderTarget as TShip).CurrentPlanet <> nil))) then
+              and (((Definitions[EntryIndex].ToShipInPlanet = gcYes) and (not ((OrderTarget as TShip).CurrentPlanet <> nil)))
+                  or ((Definitions[EntryIndex].ToShipInPlanet = gcNo) and ((OrderTarget as TShip).CurrentPlanet <> nil))) then
             Continue;
           if (Definitions[EntryIndex].ToShipBad <> gcAny)
-              and (((Definitions[EntryIndex].ToShipBad = gcYes)
-                      and (not ((OrderTarget as TShip).EnemyShip = Self)))
-                  or ((Definitions[EntryIndex].ToShipBad = gcNo)
-                      and ((OrderTarget as TShip).EnemyShip = Self))) then
+              and (((Definitions[EntryIndex].ToShipBad = gcYes) and (not ((OrderTarget as TShip).EnemyShip = Self)))
+                  or ((Definitions[EntryIndex].ToShipBad = gcNo) and ((OrderTarget as TShip).EnemyShip = Self))) then
             Continue;
           if (Definitions[EntryIndex].ToShipRelations <> [])
-              and not (GetRelationLevelToShip(OrderTarget as TShip)
-                  in Definitions[EntryIndex].ToShipRelations) then
+              and not (GetRelationLevelToShip(OrderTarget as TShip) in Definitions[EntryIndex].ToShipRelations) then
             Continue;
-          MessageText :=
-              LocalizedColorText('ShipGreetings.' + Definitions[EntryIndex].Name + '.Text');
+          MessageText := LocalizedColorText('ShipGreetings.' + Definitions[EntryIndex].Name + '.Text');
           MessageText :=
               ReplaceColoredToken(
                   MessageText,
@@ -2160,8 +1875,7 @@ begin
               ReplaceColoredToken(
                   MessageText,
                   '<ToFullShip>',
-                  (OrderTarget as TShip).GetFullName(' ')
-                      + GetLocalObjectLink(OrderTarget, Automatic),
+                  (OrderTarget as TShip).GetFullName(' ') + GetLocalObjectLink(OrderTarget, Automatic),
                   TextHighlightColorTag
               );
           if (OrderTarget as TShip).CurrentPlanet <> nil then
@@ -2177,23 +1891,17 @@ begin
           end;
         end;
       end;
-      if (Definitions[EntryIndex].ShipType <> [])
-          and not (GetGreetingShipCategory in Definitions[EntryIndex].ShipType) then
+      if (Definitions[EntryIndex].ShipType <> []) and not (GetGreetingShipCategory in Definitions[EntryIndex].ShipType) then
         Continue;
-      if (Definitions[EntryIndex].Relations <> [])
-          and not (GetRelationLevelToShip(GetPlayer) in Definitions[EntryIndex].Relations) then
+      if (Definitions[EntryIndex].Relations <> []) and not (GetRelationLevelToShip(GetPlayer) in Definitions[EntryIndex].Relations) then
         Continue;
-      if (Definitions[EntryIndex].ShipRace <> [])
-          and not (PilotRace in Definitions[EntryIndex].ShipRace) then
+      if (Definitions[EntryIndex].ShipRace <> []) and not (PilotRace in Definitions[EntryIndex].ShipRace) then
         Continue;
-      if (Definitions[EntryIndex].PlayerRace <> [])
-          and not (GetPlayer.PilotRace in Definitions[EntryIndex].PlayerRace) then
+      if (Definitions[EntryIndex].PlayerRace <> []) and not (GetPlayer.PilotRace in Definitions[EntryIndex].PlayerRace) then
         Continue;
       if (Definitions[EntryIndex].ShipRaceIsPlayerRace <> gcAny)
-          and (((Definitions[EntryIndex].ShipRaceIsPlayerRace = gcYes)
-                  and (not (GetPlayer.PilotRace = PilotRace)))
-              or ((Definitions[EntryIndex].ShipRaceIsPlayerRace = gcNo)
-                  and (GetPlayer.PilotRace = PilotRace))) then
+          and (((Definitions[EntryIndex].ShipRaceIsPlayerRace = gcYes) and (not (GetPlayer.PilotRace = PilotRace)))
+              or ((Definitions[EntryIndex].ShipRaceIsPlayerRace = gcNo) and (GetPlayer.PilotRace = PilotRace))) then
         Continue;
       if Definitions[EntryIndex].PlayerAttackGoodShip <> gcAny then
       begin
@@ -2219,15 +1927,13 @@ begin
               ReplaceColoredToken(
                   MessageText,
                   '<FullShipGood>',
-                  (GetPlayer.OrderTarget as TShip).GetFullName(' ')
-                      + GetLocalObjectLink(GetPlayer.OrderTarget, Automatic),
+                  (GetPlayer.OrderTarget as TShip).GetFullName(' ') + GetLocalObjectLink(GetPlayer.OrderTarget, Automatic),
                   ''
               );
         end;
       end;
       if (Definitions[EntryIndex].InFear <> gcAny)
-          and (((Definitions[EntryIndex].InFear = gcYes) and (not (InFear)))
-              or ((Definitions[EntryIndex].InFear = gcNo) and (InFear))) then
+          and (((Definitions[EntryIndex].InFear = gcYes) and (not (InFear))) or ((Definitions[EntryIndex].InFear = gcNo) and (InFear))) then
         Continue;
       if Definitions[EntryIndex].ShipBadFlyToShip <> gcAny then
       begin
@@ -2245,21 +1951,16 @@ begin
           and not (EnemyShip.PilotRace in Definitions[EntryIndex].ShipBadRace) then
         Continue;
       if (Definitions[EntryIndex].ShipFlyToPlayer <> gcAny)
-          and (((Definitions[EntryIndex].ShipFlyToPlayer = gcYes)
-                  and (not (GetPlayer = OrderTarget)))
-              or ((Definitions[EntryIndex].ShipFlyToPlayer = gcNo)
-                  and (GetPlayer = OrderTarget))) then
+          and (((Definitions[EntryIndex].ShipFlyToPlayer = gcYes) and (not (GetPlayer = OrderTarget)))
+              or ((Definitions[EntryIndex].ShipFlyToPlayer = gcNo) and (GetPlayer = OrderTarget))) then
         Continue;
       if (Definitions[EntryIndex].PlayerFlyToShip <> gcAny)
-          and (((Definitions[EntryIndex].PlayerFlyToShip = gcYes)
-                  and (not (GetPlayer.OrderTarget = Self)))
-              or ((Definitions[EntryIndex].PlayerFlyToShip = gcNo)
-                  and (GetPlayer.OrderTarget = Self))) then
+          and (((Definitions[EntryIndex].PlayerFlyToShip = gcYes) and (not (GetPlayer.OrderTarget = Self)))
+              or ((Definitions[EntryIndex].PlayerFlyToShip = gcNo) and (GetPlayer.OrderTarget = Self))) then
         Continue;
       if (Definitions[EntryIndex].PlayerIsShipBad <> gcAny)
           and (((Definitions[EntryIndex].PlayerIsShipBad = gcYes) and (not (GetPlayer = EnemyShip)))
-              or ((Definitions[EntryIndex].PlayerIsShipBad = gcNo)
-                  and (GetPlayer = EnemyShip))) then
+              or ((Definitions[EntryIndex].PlayerIsShipBad = gcNo) and (GetPlayer = EnemyShip))) then
         Continue;
       if (Definitions[EntryIndex].ShipTurnBeforeEndOrder <> []) then
       begin
@@ -2286,86 +1987,66 @@ begin
           and (Definitions[EntryIndex].ShipStatus <> [])
           and not ((Self as TRanger).GetDominantCareer in Definitions[EntryIndex].ShipStatus) then
         Continue;
-      if (Definitions[EntryIndex].PlayerStatus <> [])
-          and not (GetPlayer.GetDominantCareer in Definitions[EntryIndex].PlayerStatus) then
+      if (Definitions[EntryIndex].PlayerStatus <> []) and not (GetPlayer.GetDominantCareer in Definitions[EntryIndex].PlayerStatus) then
         Continue;
-      if (Definitions[EntryIndex].ShipStrength <> [])
-          and not (GetRelativeStrengthCategory in Definitions[EntryIndex].ShipStrength) then
+      if (Definitions[EntryIndex].ShipStrength <> []) and not (GetRelativeStrengthCategory in Definitions[EntryIndex].ShipStrength) then
         Continue;
       if (Definitions[EntryIndex].PlayerStrength <> [])
-          and not (GetPlayer.GetRelativeStrengthCategory
-              in Definitions[EntryIndex].PlayerStrength) then
+          and not (GetPlayer.GetRelativeStrengthCategory in Definitions[EntryIndex].PlayerStrength) then
         Continue;
-      if (Definitions[EntryIndex].ShipStructure <> [])
-          and not (GetHullConditionCategory in Definitions[EntryIndex].ShipStructure) then
+      if (Definitions[EntryIndex].ShipStructure <> []) and not (GetHullConditionCategory in Definitions[EntryIndex].ShipStructure) then
         Continue;
       if (Definitions[EntryIndex].PlayerStructure <> [])
-          and not (GetPlayer.GetHullConditionCategory
-              in Definitions[EntryIndex].PlayerStructure) then
+          and not (GetPlayer.GetHullConditionCategory in Definitions[EntryIndex].PlayerStructure) then
         Continue;
       if (Self is TRanger)
           and not (Self as TRanger).ExcludedFromRating
           and (Definitions[EntryIndex].ShipRating <> [])
           and not (GetRangerRatingBand in Definitions[EntryIndex].ShipRating) then
         Continue;
-      if (Definitions[EntryIndex].PlayerRating <> [])
-          and not (GetPlayer.GetRangerRatingBand in Definitions[EntryIndex].PlayerRating) then
+      if (Definitions[EntryIndex].PlayerRating <> []) and not (GetPlayer.GetRangerRatingBand in Definitions[EntryIndex].PlayerRating) then
         Continue;
-      if (Definitions[EntryIndex].ShipRank <> [])
-          and not (Rank in Definitions[EntryIndex].ShipRank) then
+      if (Definitions[EntryIndex].ShipRank <> []) and not (Rank in Definitions[EntryIndex].ShipRank) then
         Continue;
-      if (Definitions[EntryIndex].PlayerRank <> [])
-          and not (GetPlayer.Rank in Definitions[EntryIndex].PlayerRank) then
+      if (Definitions[EntryIndex].PlayerRank <> []) and not (GetPlayer.Rank in Definitions[EntryIndex].PlayerRank) then
         Continue;
-      if (Definitions[EntryIndex].PlayerPirateRank <> [])
-          and not (GetPlayer.PirateRank in Definitions[EntryIndex].PlayerPirateRank) then
+      if (Definitions[EntryIndex].PlayerPirateRank <> []) and not (GetPlayer.PirateRank in Definitions[EntryIndex].PlayerPirateRank) then
         Continue;
       if (Self is TRanger)
           and not (Self as TRanger).ExcludedFromRating
           and (Definitions[EntryIndex].RatingShipWithPlayer <> [])
-          and not (GetPlayer.GetShipRatingComparison(Self)
-              in Definitions[EntryIndex].RatingShipWithPlayer) then
+          and not (GetPlayer.GetShipRatingComparison(Self) in Definitions[EntryIndex].RatingShipWithPlayer) then
         Continue;
       if (Definitions[EntryIndex].RankShipWithPlayer <> [])
-          and not (GetPlayer.GetShipRankComparison(Self)
-              in Definitions[EntryIndex].RankShipWithPlayer) then
+          and not (GetPlayer.GetShipRankComparison(Self) in Definitions[EntryIndex].RankShipWithPlayer) then
         Continue;
       if (Definitions[EntryIndex].RankShipWithPlayerExtra <> [])
-          and not (GetPlayer.GetShipPirateRankComparison(Self)
-              in Definitions[EntryIndex].RankShipWithPlayerExtra) then
+          and not (GetPlayer.GetShipPirateRankComparison(Self) in Definitions[EntryIndex].RankShipWithPlayerExtra) then
         Continue;
       if (Definitions[EntryIndex].StrengthShipWithPlayer <> [])
-          and not (GetPlayer.GetShipStrengthComparison(Self)
-              in Definitions[EntryIndex].StrengthShipWithPlayer) then
+          and not (GetPlayer.GetShipStrengthComparison(Self) in Definitions[EntryIndex].StrengthShipWithPlayer) then
         Continue;
       if Good <> NoGreetingGoods then
       begin
         if (Definitions[EntryIndex].ShipGoodsCnt <> [])
-            and not (Galaxy.ClassifyGoodsQuantity(CargoGoods[Good].Count, Good)
-                in Definitions[EntryIndex].ShipGoodsCnt) then
+            and not (Galaxy.ClassifyGoodsQuantity(CargoGoods[Good].Count, Good) in Definitions[EntryIndex].ShipGoodsCnt) then
           Continue;
         if (Definitions[EntryIndex].PlayerGoodsCnt <> [])
-            and not (Galaxy.ClassifyGoodsQuantity(GetPlayer.CargoGoods[Good].Count, Good)
-                in Definitions[EntryIndex].PlayerGoodsCnt) then
+            and not (Galaxy.ClassifyGoodsQuantity(GetPlayer.CargoGoods[Good].Count, Good) in Definitions[EntryIndex].PlayerGoodsCnt) then
           Continue;
         if (Definitions[EntryIndex].ShipHaveGoods <> gcAny)
             and (((Definitions[EntryIndex].ShipHaveGoods = gcYes) and (CargoGoods[Good].Count = 0))
-                or ((Definitions[EntryIndex].ShipHaveGoods = gcNo)
-                    and (CargoGoods[Good].Count > 0))) then
+                or ((Definitions[EntryIndex].ShipHaveGoods = gcNo) and (CargoGoods[Good].Count > 0))) then
           Continue;
         if (Definitions[EntryIndex].PlayerHaveGoods <> gcAny)
-            and (((Definitions[EntryIndex].PlayerHaveGoods = gcYes)
-                    and (GetPlayer.CargoGoods[Good].Count = 0))
-                or ((Definitions[EntryIndex].PlayerHaveGoods = gcNo)
-                    and (GetPlayer.CargoGoods[Good].Count > 0))) then
+            and (((Definitions[EntryIndex].PlayerHaveGoods = gcYes) and (GetPlayer.CargoGoods[Good].Count = 0))
+                or ((Definitions[EntryIndex].PlayerHaveGoods = gcNo) and (GetPlayer.CargoGoods[Good].Count > 0))) then
           Continue;
       end;
-      if (Definitions[EntryIndex].ShipGoodsTypeCnt <> [])
-          and not (CountCargoGoodsTypes in Definitions[EntryIndex].ShipGoodsTypeCnt) then
+      if (Definitions[EntryIndex].ShipGoodsTypeCnt <> []) and not (CountCargoGoodsTypes in Definitions[EntryIndex].ShipGoodsTypeCnt) then
         Continue;
       if (Definitions[EntryIndex].PlayerGoodsTypeCnt <> [])
-          and not (GetPlayer.CountCargoGoodsTypes
-              in Definitions[EntryIndex].PlayerGoodsTypeCnt) then
+          and not (GetPlayer.CountCargoGoodsTypes in Definitions[EntryIndex].PlayerGoodsTypeCnt) then
         Continue;
       if (Definitions[EntryIndex].ShipMayScanPlayer <> gcAny)
           and (((Definitions[EntryIndex].ShipMayScanPlayer = gcYes)
@@ -2389,9 +2070,7 @@ begin
           for K := 0 to CurrentStar.Ships.Count - 1 do
           begin
             Other := CurrentStar.Ships[K];
-            if not Other.HasScriptStateText
-                and (Other.TypeNameOverrideKey = '')
-                and (Other.TypeId = ShipKind) then
+            if not Other.HasScriptStateText and (Other.TypeNameOverrideKey = '') and (Other.TypeId = ShipKind) then
               Inc(Count);
           end;
           Count := Min(10, Count);
@@ -2415,8 +2094,7 @@ begin
         if not (LastDockedPlanet.RaceId in Definitions[EntryIndex].LastPlanetRace) then
           Continue;
         if (Definitions[EntryIndex].LastPlanetRelations <> [])
-            and not (LastDockedPlanet.GetRelationLevelToShip(GetPlayer)
-                in Definitions[EntryIndex].LastPlanetRelations) then
+            and not (LastDockedPlanet.GetRelationLevelToShip(GetPlayer) in Definitions[EntryIndex].LastPlanetRelations) then
           Continue;
         if Good <> NoGreetingGoods then
         begin
@@ -2425,56 +2103,43 @@ begin
                   in Definitions[EntryIndex].LastPlanetGoodsCnt) then
             Continue;
           if (Definitions[EntryIndex].LastPlanetGoodsSale <> [])
-              and not (Galaxy.ClassifyGoodsPrice(
-                      GetPlayer.ShopGoodsPurchasePrice(Good, LastDockedPlanet),
-                      Good)
+              and not (Galaxy.ClassifyGoodsPrice(GetPlayer.ShopGoodsPurchasePrice(Good, LastDockedPlanet), Good)
                   in Definitions[EntryIndex].LastPlanetGoodsSale) then
             Continue;
           if (Definitions[EntryIndex].LastPlanetGoodsBuy <> [])
-              and not (Galaxy.ClassifyGoodsPrice(
-                      GetPlayer.ShopGoodsSellPrice(Good, LastDockedPlanet),
-                      Good)
+              and not (Galaxy.ClassifyGoodsPrice(GetPlayer.ShopGoodsSellPrice(Good, LastDockedPlanet), Good)
                   in Definitions[EntryIndex].LastPlanetGoodsBuy) then
             Continue;
         end;
         if (Definitions[EntryIndex].LastPlanetIsHomePlanet <> gcAny)
-            and (((Definitions[EntryIndex].LastPlanetIsHomePlanet = gcYes)
-                    and (not (LastDockedPlanet = HomePlanet)))
-                or ((Definitions[EntryIndex].LastPlanetIsHomePlanet = gcNo)
-                    and (LastDockedPlanet = HomePlanet))) then
+            and (((Definitions[EntryIndex].LastPlanetIsHomePlanet = gcYes) and (not (LastDockedPlanet = HomePlanet)))
+                or ((Definitions[EntryIndex].LastPlanetIsHomePlanet = gcNo) and (LastDockedPlanet = HomePlanet))) then
           Continue;
         if Definitions[EntryIndex].LastPlanetRaceIsShipRace <> gcAny then
         begin
           if not (LastDockedPlanet.OwnerId in [oiMaloc..oiGaal, oiPirate]) then
             Continue;
-          if (((Definitions[EntryIndex].LastPlanetRaceIsShipRace = gcYes)
-                  and (not (LastDockedPlanet.RaceId = PilotRace)))
-              or ((Definitions[EntryIndex].LastPlanetRaceIsShipRace = gcNo)
-                  and (LastDockedPlanet.RaceId = PilotRace))) then
+          if (((Definitions[EntryIndex].LastPlanetRaceIsShipRace = gcYes) and (not (LastDockedPlanet.RaceId = PilotRace)))
+              or ((Definitions[EntryIndex].LastPlanetRaceIsShipRace = gcNo) and (LastDockedPlanet.RaceId = PilotRace))) then
             Continue;
         end;
         if Definitions[EntryIndex].LastPlanetRaceIsPlayerRace <> gcAny then
         begin
           if not (LastDockedPlanet.OwnerId in [oiMaloc..oiGaal, oiPirate]) then
             Continue;
-          if (((Definitions[EntryIndex].LastPlanetRaceIsPlayerRace = gcYes)
-                  and (not (GetPlayer.PilotRace = LastDockedPlanet.RaceId)))
-              or ((Definitions[EntryIndex].LastPlanetRaceIsPlayerRace = gcNo)
-                  and (GetPlayer.PilotRace = LastDockedPlanet.RaceId))) then
+          if (((Definitions[EntryIndex].LastPlanetRaceIsPlayerRace = gcYes) and (not (GetPlayer.PilotRace = LastDockedPlanet.RaceId)))
+              or ((Definitions[EntryIndex].LastPlanetRaceIsPlayerRace = gcNo) and (GetPlayer.PilotRace = LastDockedPlanet.RaceId))) then
             Continue;
         end;
         if (Definitions[EntryIndex].LastPlanetEconomy <> [])
             and not (LastDockedPlanet.Economy in Definitions[EntryIndex].LastPlanetEconomy) then
           Continue;
         if (Definitions[EntryIndex].LastPlanetGovernment <> [])
-            and not (LastDockedPlanet.Government
-                in Definitions[EntryIndex].LastPlanetGovernment) then
+            and not (LastDockedPlanet.Government in Definitions[EntryIndex].LastPlanetGovernment) then
           Continue;
         if (Definitions[EntryIndex].LastPlanetInCurStar <> gcAny)
-            and (((Definitions[EntryIndex].LastPlanetInCurStar = gcYes)
-                    and (not (LastDockedPlanet.CurrentStar = CurrentStar)))
-                or ((Definitions[EntryIndex].LastPlanetInCurStar = gcNo)
-                    and (LastDockedPlanet.CurrentStar = CurrentStar))) then
+            and (((Definitions[EntryIndex].LastPlanetInCurStar = gcYes) and (not (LastDockedPlanet.CurrentStar = CurrentStar)))
+                or ((Definitions[EntryIndex].LastPlanetInCurStar = gcNo) and (LastDockedPlanet.CurrentStar = CurrentStar))) then
           Continue;
         if Definitions[EntryIndex].LastPlanetDistToShipInTurn <> [] then
         begin
@@ -2502,9 +2167,7 @@ begin
               for K := 0 to LastDockedPlanet.CurrentStar.Ships.Count - 1 do
               begin
                 Other := LastDockedPlanet.CurrentStar.Ships[K];
-                if not Other.HasScriptStateText
-                    and (Other.TypeNameOverrideKey = '')
-                    and (Other.TypeId = ShipKind) then
+                if not Other.HasScriptStateText and (Other.TypeNameOverrideKey = '') and (Other.TypeId = ShipKind) then
                   Inc(Count);
               end;
               Count := Min(10, Count);
@@ -2525,13 +2188,7 @@ begin
                 LastDockedPlanet.Name + GetLocalObjectLink(LastDockedPlanet, Automatic),
                 TextHighlightColorTag
             );
-        MessageText :=
-            ReplaceColoredToken(
-                MessageText,
-                '<LastPlanetStar>',
-                LastDockedPlanet.CurrentStar.Name,
-                TextHighlightColorTag
-            );
+        MessageText := ReplaceColoredToken(MessageText, '<LastPlanetStar>', LastDockedPlanet.CurrentStar.Name, TextHighlightColorTag);
         if Good <> NoGreetingGoods then
         begin
           MessageText :=
@@ -2552,20 +2209,9 @@ begin
       end;
       if MessageText <> '' then
       begin
+        MessageText := ReplaceColoredToken(MessageText, '<Ship>', GetName + GetLocalObjectLink(Self, Automatic), TextHighlightColorTag);
         MessageText :=
-            ReplaceColoredToken(
-                MessageText,
-                '<Ship>',
-                GetName + GetLocalObjectLink(Self, Automatic),
-                TextHighlightColorTag
-            );
-        MessageText :=
-            ReplaceColoredToken(
-                MessageText,
-                '<FullShip>',
-                GetFullName(' ') + GetLocalObjectLink(Self, Automatic),
-                TextHighlightColorTag
-            );
+            ReplaceColoredToken(MessageText, '<FullShip>', GetFullName(' ') + GetLocalObjectLink(Self, Automatic), TextHighlightColorTag);
         if EnemyShip <> nil then
         begin
           MessageText :=
@@ -2583,17 +2229,9 @@ begin
                   TextHighlightColorTag
               );
         end;
-        MessageText :=
-            ReplaceColoredToken(MessageText, '<ShipRank>', GetRankName, TextHighlightColorTag);
-        MessageText :=
-            ReplaceColoredToken(
-                MessageText,
-                '<PlayerRank>',
-                GetPlayer.GetRankName,
-                TextHighlightColorTag
-            );
-        MessageText :=
-            ReplaceColoredToken(MessageText, '<CurStar>', CurrentStar.Name, TextHighlightColorTag);
+        MessageText := ReplaceColoredToken(MessageText, '<ShipRank>', GetRankName, TextHighlightColorTag);
+        MessageText := ReplaceColoredToken(MessageText, '<PlayerRank>', GetPlayer.GetRankName, TextHighlightColorTag);
+        MessageText := ReplaceColoredToken(MessageText, '<CurStar>', CurrentStar.Name, TextHighlightColorTag);
         if HomePlanet <> nil then
         begin
           MessageText :=
@@ -2603,13 +2241,7 @@ begin
                   HomePlanet.Name + GetLocalObjectLink(HomePlanet, Automatic),
                   TextHighlightColorTag
               );
-          MessageText :=
-              ReplaceColoredToken(
-                  MessageText,
-                  '<HomePlanetStar>',
-                  HomePlanet.CurrentStar.Name,
-                  TextHighlightColorTag
-              );
+          MessageText := ReplaceColoredToken(MessageText, '<HomePlanetStar>', HomePlanet.CurrentStar.Name, TextHighlightColorTag);
         end;
         BestText := MessageText;
         if CandidatePriority = -1 then
@@ -2627,10 +2259,7 @@ end;
 procedure TNormalShip.UpdateAfterburnerState;
 begin
   AfterburnerActive :=
-      (GetSlotCount(sskAfterburner) > 0)
-          and (GetEngine <> nil)
-          and (GetEngine.ConditionPercent > 10)
-          and (EstimateOrderTravelTurns > 1);
+      (GetSlotCount(sskAfterburner) > 0) and (GetEngine <> nil) and (GetEngine.ConditionPercent > 10) and (EstimateOrderTravelTurns > 1);
   RefreshDerivedStats(True);
 end;
 
@@ -2638,19 +2267,17 @@ procedure TNormalShip.TrainSkillsAutomatically;
 var
   Score, BestScore: Single;
   Skill, BestSkill: TPilotSkill;
-  Bonus: Byte;
+  Bonus: TEquipmentBonusKind;
 begin
   repeat
     BestScore := -1;
     BestSkill := psAccuracy;
-    for Bonus := 22 to 27 do
+    for Bonus := bonSkill1 to bonSkill6 do
     begin
-      Skill := EquipmentBonusSkills[Bonus - 22];
+      Skill := EquipmentBonusSkills[Bonus];
       if BaseSkills[Skill] < 6 then
       begin
-        Score :=
-            Sqr(EvaluateStatBonus(TEquipmentBonusKind(Bonus), 1))
-                / SkillTrainingCosts[BaseSkills[Skill] + 1, Skill];
+        Score := Sqr(EvaluateStatBonus(Bonus, 1)) / SkillTrainingCosts[BaseSkills[Skill] + 1, Skill];
         if Score > BestScore then
         begin
           BestScore := Score;
@@ -2658,8 +2285,7 @@ begin
         end;
       end;
     end;
-    if (BestScore < 0)
-        or (SkillTrainingCosts[BaseSkills[BestSkill] + 1, BestSkill] > FreeExperience) then
+    if (BestScore < 0) or (SkillTrainingCosts[BaseSkills[BestSkill] + 1, BestSkill] > FreeExperience) then
       Break;
   until not TrainSkill(BestSkill);
 end;

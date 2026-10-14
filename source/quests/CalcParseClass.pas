@@ -30,36 +30,16 @@ type
     procedure ApplyAdd(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
     procedure ApplySubtract(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
     procedure ApplyMultiply(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
-    procedure ApplyPercentChange(
-        var Left: TCPVariant;
-        var Right: TCPVariant;
-        var OutValue: TCPVariant
-    );
+    procedure ApplyPercentChange(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
     procedure ApplyDivide(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
     procedure ApplyIntDivide(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
     procedure ApplyModulo(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
     procedure ApplyRange(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
-    procedure ApplyMembership(
-        var Left: TCPVariant;
-        var Right: TCPVariant;
-        var OutValue: TCPVariant
-    );
+    procedure ApplyMembership(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
     procedure ApplyLessThan(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
-    procedure ApplyGreaterThan(
-        var Left: TCPVariant;
-        var Right: TCPVariant;
-        var OutValue: TCPVariant
-    );
-    procedure ApplyLessOrEqual(
-        var Left: TCPVariant;
-        var Right: TCPVariant;
-        var OutValue: TCPVariant
-    );
-    procedure ApplyGreaterOrEqual(
-        var Left: TCPVariant;
-        var Right: TCPVariant;
-        var OutValue: TCPVariant
-    );
+    procedure ApplyGreaterThan(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
+    procedure ApplyLessOrEqual(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
+    procedure ApplyGreaterOrEqual(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
     procedure ApplyEqual(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
     procedure ApplyNotEqual(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
     procedure ApplyAnd(var Left: TCPVariant; var Right: TCPVariant; var OutValue: TCPVariant);
@@ -80,11 +60,7 @@ type
     procedure Prepare(Text: WideString; DefaultParameterIndex: Integer);
     constructor Create;
     procedure Reset;
-    function HasBalancedParenthesesInSlice(
-        const Text: WideString;
-        FirstIndex: Integer;
-        LastIndex: Integer
-    ): Boolean;
+    function HasBalancedParenthesesInSlice(const Text: WideString; FirstIndex: Integer; LastIndex: Integer): Boolean;
     function SubstituteParameters(Parameters: TList): WideString;
     function HasBalancedParentheses(const Text: WideString): Boolean;
     function ClampNumericLiterals(Text: WideString): WideString;
@@ -107,11 +83,9 @@ begin
   OutValue.Reset;
   OutValue.ValueKind := cpvkFloat;
   if (Left.ValueKind = cpvkFloat) and (Right.ValueKind = cpvkFloat) then
-    OutValue.FloatValue :=
-        Math.Sign(Left.AsExtended) * Math.Power(Abs(Left.AsExtended), Right.AsExtended)
+    OutValue.FloatValue := Math.Sign(Left.AsExtended) * Math.Power(Abs(Left.AsExtended), Right.AsExtended)
   else if Left.ValueKind = cpvkFloat then
-    OutValue.FloatValue :=
-        Math.Sign(Left.AsExtended) * Math.IntPower(Abs(Left.AsExtended), Right.AsInteger)
+    OutValue.FloatValue := Math.Sign(Left.AsExtended) * Math.IntPower(Abs(Left.AsExtended), Right.AsInteger)
   else if Right.ValueKind = cpvkFloat then
   begin
     A := Left.AsInteger;
@@ -396,15 +370,15 @@ begin
   else if Left.ValueKind = cpvkInteger then
     Minimum := Left.IntValue
   else if Left.ValueKind = cpvkRange then
-    Minimum := TCPDiapazone(Left.Range).GetMinimum;
+    Minimum := Left.Range.GetMinimum;
   if Right.ValueKind = cpvkFloat then
     Maximum := System.Round(Right.FloatValue)
   else if Right.ValueKind = cpvkInteger then
     Maximum := Right.IntValue
   else if Right.ValueKind = cpvkRange then
-    Maximum := TCPDiapazone(Right.Range).GetMaximum;
+    Maximum := Right.Range.GetMaximum;
   OutValue.ValueKind := cpvkRange;
-  TCPDiapazone(OutValue.Range).AddRange(Minimum, Maximum);
+  OutValue.Range.AddRange(Minimum, Maximum);
 end;
 
 procedure TCalcParse.ApplyMembership(var Left, Right, OutValue: TCPVariant);
@@ -420,21 +394,21 @@ begin
   end
   else if (Left.ValueKind = cpvkRange) and (Right.ValueKind <> cpvkRange) then
   begin
-    if TCPDiapazone(Left.Range).Contains(Right.AsExtended) then
+    if Left.Range.Contains(Right.AsExtended) then
       OutValue.IntValue := 1
     else
       OutValue.IntValue := 0;
   end
   else if (Left.ValueKind <> cpvkRange) and (Right.ValueKind = cpvkRange) then
   begin
-    if TCPDiapazone(Right.Range).Contains(Left.AsExtended) then
+    if Right.Range.Contains(Left.AsExtended) then
       OutValue.IntValue := 1
     else
       OutValue.IntValue := 0;
   end
   else if (Left.ValueKind = cpvkRange) and (Right.ValueKind = cpvkRange) then
   begin
-    if TCPDiapazone(Right.Range).Contains(Left.AsInteger) then
+    if Right.Range.Contains(Left.AsInteger) then
       OutValue.IntValue := 1
     else
       OutValue.IntValue := 0;
@@ -515,23 +489,23 @@ begin
   else if (Left.ValueKind = cpvkRange) and (Right.ValueKind = cpvkRange) then
   begin
     OutValue.Assign(Left, False);
-    TCPDiapazone(OutValue.Range).Append(Right.Range);
+    OutValue.Range.Append(Right.Range);
   end
   else if (Left.ValueKind <> cpvkRange) and (Right.ValueKind = cpvkRange) then
   begin
     OutValue.Assign(Right, False);
     if Left.ValueKind = cpvkInteger then
-      TCPDiapazone(OutValue.Range).AddRange(Left.IntValue, Left.IntValue)
+      OutValue.Range.AddRange(Left.IntValue, Left.IntValue)
     else
-      TCPDiapazone(OutValue.Range).AddValue(Left.FloatValue);
+      OutValue.Range.AddValue(Left.FloatValue);
   end
   else if (Left.ValueKind = cpvkRange) and (Right.ValueKind <> cpvkRange) then
   begin
     OutValue.Assign(Left, False);
     if Right.ValueKind = cpvkInteger then
-      TCPDiapazone(OutValue.Range).AddRange(Right.IntValue, Right.IntValue)
+      OutValue.Range.AddRange(Right.IntValue, Right.IntValue)
     else
-      TCPDiapazone(OutValue.Range).AddValue(Right.FloatValue);
+      OutValue.Range.AddValue(Right.FloatValue);
   end;
 end;
 
@@ -548,23 +522,23 @@ begin
   else if (Left.ValueKind = cpvkRange) and (Right.ValueKind = cpvkRange) then
   begin
     OutValue.Assign(Left, False);
-    TCPDiapazone(OutValue.Range).Append(Right.Range);
+    OutValue.Range.Append(Right.Range);
   end
   else if (Left.ValueKind <> cpvkRange) and (Right.ValueKind = cpvkRange) then
   begin
     OutValue.Assign(Right, False);
     if Left.ValueKind = cpvkInteger then
-      TCPDiapazone(OutValue.Range).AddRange(Left.IntValue, Left.IntValue)
+      OutValue.Range.AddRange(Left.IntValue, Left.IntValue)
     else
-      TCPDiapazone(OutValue.Range).AddValue(Left.FloatValue);
+      OutValue.Range.AddValue(Left.FloatValue);
   end
   else if (Left.ValueKind = cpvkRange) and (Right.ValueKind <> cpvkRange) then
   begin
     OutValue.Assign(Left, False);
     if Right.ValueKind = cpvkInteger then
-      TCPDiapazone(OutValue.Range).AddRange(Right.IntValue, Right.IntValue)
+      OutValue.Range.AddRange(Right.IntValue, Right.IntValue)
     else
-      TCPDiapazone(OutValue.Range).AddValue(Right.FloatValue);
+      OutValue.Range.AddValue(Right.FloatValue);
   end;
 end;
 
@@ -607,9 +581,7 @@ begin
         Index := FindTextOffsetW(Current, ' ', Index + 1)
       else
       begin
-        Current :=
-            CopyWideStringUnchecked(Current, 1, Index)
-                + CopyWideStringUnchecked(Current, Index + 2, Length(Current) - Index - 1);
+        Current := CopyWideStringUnchecked(Current, 1, Index) + CopyWideStringUnchecked(Current, Index + 2, Length(Current) - Index - 1);
         Index := FindTextOffsetW(Current, ' ', Index);
       end;
     end;
@@ -652,31 +624,28 @@ begin
 end;
 
 function TCalcParse.GetOperatorRank(Token: WideChar): Integer;
-var
-  Rank: Integer;
 begin
-  Rank := -1;
+  Result := -1;
   case Token of
-    '^': Rank := 1;
-    '/': Rank := 1;
-    'f': Rank := 1;
-    'g': Rank := 1;
-    '*': Rank := 2;
-    '%': Rank := 2;
-    '-': Rank := 3;
-    '+': Rank := 4;
-    '$': Rank := 5;
-    '#': Rank := 6;
-    'c': Rank := 7;
-    'b': Rank := 7;
-    'e': Rank := 7;
-    '>': Rank := 7;
-    '<': Rank := 7;
-    '=': Rank := 7;
-    '&': Rank := 8;
-    '|': Rank := 9;
+    '^': Result := 1;
+    '/': Result := 1;
+    'f': Result := 1;
+    'g': Result := 1;
+    '*': Result := 2;
+    '%': Result := 2;
+    '-': Result := 3;
+    '+': Result := 4;
+    '$': Result := 5;
+    '#': Result := 6;
+    'c': Result := 7;
+    'b': Result := 7;
+    'e': Result := 7;
+    '>': Result := 7;
+    '<': Result := 7;
+    '=': Result := 7;
+    '&': Result := 8;
+    '|': Result := 9;
   end;
-  Result := Rank;
 end;
 
 function TCalcParse.CollapseOperatorRun(const Text: WideString): WideString;
@@ -1069,9 +1038,7 @@ begin
     Count := Length(Text);
     if not Value.TryLoadFromText(Text) then
     begin
-      if (Text[1] = '(')
-          and (Text[Count] = ')')
-          and HasBalancedParenthesesInSlice(Text, 2, Count - 1) then
+      if (Text[1] = '(') and (Text[Count] = ')') and HasBalancedParenthesesInSlice(Text, 2, Count - 1) then
       begin
         Inner := '';
         for i := 2 to Count - 1 do
@@ -1211,10 +1178,7 @@ begin
   if not HasError then
   begin
     Count := Length(Text);
-    if (Count >= 2)
-        and (Text[1] = '(')
-        and (Text[Count] = ')')
-        and HasBalancedParenthesesInSlice(Text, 2, Count - 1) then
+    if (Count >= 2) and (Text[1] = '(') and (Text[Count] = ')') and HasBalancedParenthesesInSlice(Text, 2, Count - 1) then
     begin
       Readable := '';
       for i := 2 to Count - 1 do
@@ -1252,10 +1216,7 @@ begin
   HasError := False;
 end;
 
-function TCalcParse.HasBalancedParenthesesInSlice(
-    const Text: WideString;
-    FirstIndex, LastIndex: Integer
-): Boolean;
+function TCalcParse.HasBalancedParenthesesInSlice(const Text: WideString; FirstIndex, LastIndex: Integer): Boolean;
 var
   Depth, i: Integer;
   Balanced: Boolean;
@@ -1290,19 +1251,9 @@ begin
   begin
     Parameter := TParameter(Parameters[i - 1]);
     if Parameter.Value < 0 then
-      Text :=
-          ReplaceAllWideString(
-              Text,
-              '[p' + IntToWideString(i) + ']',
-              '(0' + IntToWideString(Parameter.Value) + ')'
-          )
+      Text := ReplaceAllWideString(Text, '[p' + IntToWideString(i) + ']', '(0' + IntToWideString(Parameter.Value) + ')')
     else
-      Text :=
-          ReplaceAllWideString(
-              Text,
-              '[p' + IntToWideString(i) + ']',
-              IntToWideString(Parameter.Value)
-          );
+      Text := ReplaceAllWideString(Text, '[p' + IntToWideString(i) + ']', IntToWideString(Parameter.Value));
   end;
   Result := Text;
 end;

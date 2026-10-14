@@ -8,11 +8,7 @@ interface
 uses
   DirectSound;
 
-function CreateGameSound(
-    Guid: Pointer;
-    out Sound: IDirectSound;
-    Outer: IInterface
-): LongInt; stdcall;
+function CreateGameSound(Guid: Pointer; out Sound: IDirectSound; Outer: IInterface): LongInt; stdcall;
 function EnumerateGameSound(Callback: TDSEnumCallback; Context: Pointer): LongInt; stdcall;
 procedure CheckGameSoundFailure(const Sound: IDirectSound);
 
@@ -23,6 +19,7 @@ uses
   SysUtils,
   Math,
   SDL2,
+  GameSDLDiagnostics,
   GameEvents,
   EC_Thread;
 
@@ -78,17 +75,9 @@ type
     function SetPan(Pan: Integer): LongInt; stdcall;
     function SetFrequency(Frequency: Cardinal): LongInt; stdcall;
     function Stop: LongInt; stdcall;
-    function Unlock(
-        Audio1: Pointer;
-        Bytes1: Cardinal;
-        Audio2: Pointer;
-        Bytes2: Cardinal
-    ): LongInt; stdcall;
+    function Unlock(Audio1: Pointer; Bytes1: Cardinal; Audio2: Pointer; Bytes2: Cardinal): LongInt; stdcall;
     function Restore: LongInt; stdcall;
-    function SetNotificationPositions(
-        Count: Cardinal;
-        Positions: PDSPositionNotify
-    ): LongInt; stdcall;
+    function SetNotificationPositions(Count: Cardinal; Positions: PDSPositionNotify): LongInt; stdcall;
   end;
   TGameSound = class(TInterfacedObject, IDirectSound, IGameSoundDiagnostics)
     Device: Cardinal;
@@ -102,16 +91,9 @@ type
     procedure Mix(Samples: PSingle; Frames: Integer);
     constructor Create;
     destructor Destroy; override;
-    function CreateSoundBuffer(
-        const Desc: TDSBufferDesc;
-        out Buffer: IDirectSoundBuffer;
-        Outer: IInterface
-    ): LongInt; stdcall;
+    function CreateSoundBuffer(const Desc: TDSBufferDesc; out Buffer: IDirectSoundBuffer; Outer: IInterface): LongInt; stdcall;
     function GetCaps(Caps: Pointer): LongInt; stdcall;
-    function DuplicateSoundBuffer(
-        Original: IDirectSoundBuffer;
-        out Duplicate: IDirectSoundBuffer
-    ): LongInt; stdcall;
+    function DuplicateSoundBuffer(Original: IDirectSoundBuffer; out Duplicate: IDirectSoundBuffer): LongInt; stdcall;
     function SetCooperativeLevel(Window: Cardinal; Level: Cardinal): LongInt; stdcall;
     function Compact: LongInt; stdcall;
     function GetSpeakerConfig(out Configuration: Cardinal): LongInt; stdcall;
@@ -139,7 +121,7 @@ end;
 
 constructor TGameAudioMixer.Create(AOwner: TGameSound);
 begin
-  inherited Create;
+  inherited Create('audio-mixer');
   Owner := AOwner;
 end;
 
@@ -162,8 +144,7 @@ begin
     end;
     // SDL owns the queued copy. Never wait for its audio thread while holding
     // the game mixer lock or invoking notification handlers.
-    if SDL_QueueAudio(Owner.Device, @PCM[0], SizeOf(PCM)) < 0 then
-      raise Exception.Create('Cannot queue audio: ' + string(SDL_GetError));
+    CheckGameSDL(SDL_QueueAudio(Owner.Device, @PCM[0], SizeOf(PCM)), 'SDL_QueueAudio');
   end;
 end;
 
@@ -199,8 +180,8 @@ begin
   InitCriticalSection(MixerLock);
   MixerLockReady := True;
   Buffers := TFPList.Create;
-  if SDL_InitSubSystem(SDL_INIT_AUDIO) < 0 then
-    raise Exception.Create(string(SDL_GetError));
+  InstallGameSDLDiagnostics;
+  CheckGameSDL(SDL_InitSubSystem(SDL_INIT_AUDIO), 'SDL_InitSubSystem(audio)');
   Desired := Default(TSDL_AudioSpec);
   Desired.Frequency := 44100;
   Desired.Format := AUDIO_F32SYS;
@@ -210,7 +191,7 @@ begin
   // (about 46 ms at 44.1 kHz), using the same path on every platform.
   Device := SDL_OpenAudioDevice(nil, 0, @Desired, nil, 0);
   if Device = 0 then
-    raise Exception.Create(string(SDL_GetError));
+    RaiseGameSDLError('SDL_OpenAudioDevice(default, 44100 Hz, stereo, float32)');
   Mixer := TGameAudioMixer.Create(Self);
   Mixer.Start;
   SDL_PauseAudioDevice(Device, 0);
@@ -355,10 +336,7 @@ function TGameSoundBuffer.GetCaps(Caps: Pointer): LongInt;
 begin
   Result := DSERR_UNSUPPORTED;
 end;
-function TGameSoundBuffer.GetCurrentPosition(
-    PlayCursor: PCardinal;
-    WriteCursor: PCardinal
-): LongInt;
+function TGameSoundBuffer.GetCurrentPosition(PlayCursor: PCardinal; WriteCursor: PCardinal): LongInt;
 var
   Position: Cardinal;
 begin
@@ -433,11 +411,7 @@ begin
     Offset := 0;
     Bytes := Length(Data);
   end;
-  if (Length(Data) = 0)
-      or (Offset >= Cardinal(Length(Data)))
-      or (Bytes > Cardinal(Length(Data)))
-      or (Audio1 = nil)
-      or (Bytes1 = nil) then
+  if (Length(Data) = 0) or (Offset >= Cardinal(Length(Data))) or (Bytes > Cardinal(Length(Data))) or (Audio1 = nil) or (Bytes1 = nil) then
     Exit(DSERR_INVALIDPARAM);
   First := Min(Bytes, Cardinal(Length(Data)) - Offset);
   if (First <> Bytes) and ((Audio2 = nil) or (Bytes2 = nil)) then
@@ -454,12 +428,7 @@ begin
     Bytes2^ := Bytes - First;
   Result := DS_OK;
 end;
-function TGameSoundBuffer.Unlock(
-    Audio1: Pointer;
-    Bytes1: Cardinal;
-    Audio2: Pointer;
-    Bytes2: Cardinal
-): LongInt;
+function TGameSoundBuffer.Unlock(Audio1: Pointer; Bytes1: Cardinal; Audio2: Pointer; Bytes2: Cardinal): LongInt;
 begin
   Owner.Unlock;
   Result := DS_OK;
@@ -556,10 +525,7 @@ function TGameSoundBuffer.Restore: LongInt;
 begin
   Result := DS_OK;
 end;
-function TGameSoundBuffer.SetNotificationPositions(
-    Count: Cardinal;
-    Positions: PDSPositionNotify
-): LongInt;
+function TGameSoundBuffer.SetNotificationPositions(Count: Cardinal; Positions: PDSPositionNotify): LongInt;
 begin
   if (Count <> 0) and (Positions = nil) then
     Exit(DSERR_INVALIDPARAM);
@@ -573,11 +539,7 @@ begin
   end;
   Result := DS_OK;
 end;
-function TGameSound.CreateSoundBuffer(
-    const Desc: TDSBufferDesc;
-    out Buffer: IDirectSoundBuffer;
-    Outer: IInterface
-): LongInt;
+function TGameSound.CreateSoundBuffer(const Desc: TDSBufferDesc; out Buffer: IDirectSoundBuffer; Outer: IInterface): LongInt;
 begin
   Buffer := nil;
   if Outer <> nil then
@@ -598,10 +560,7 @@ function TGameSound.GetCaps(Caps: Pointer): LongInt;
 begin
   Result := DSERR_UNSUPPORTED;
 end;
-function TGameSound.DuplicateSoundBuffer(
-    Original: IDirectSoundBuffer;
-    out Duplicate: IDirectSoundBuffer
-): LongInt;
+function TGameSound.DuplicateSoundBuffer(Original: IDirectSoundBuffer; out Duplicate: IDirectSoundBuffer): LongInt;
 begin
   Duplicate := nil;
   Result := DSERR_UNSUPPORTED;
@@ -630,22 +589,14 @@ function TGameSound.Initialize(Guid: Pointer): LongInt;
 begin
   Result := DSERR_ALREADYINITIALIZED;
 end;
-function CreateGameSound(
-    Guid: Pointer;
-    out Sound: IDirectSound;
-    Outer: IInterface
-): LongInt; stdcall;
+function CreateGameSound(Guid: Pointer; out Sound: IDirectSound; Outer: IInterface): LongInt; stdcall;
 begin
   Sound := nil;
   if Outer <> nil then
     Exit(DSERR_NOAGGREGATION);
-  try
-    Sound := TGameSound.Create;
-    Result := DS_OK;
-  except
-    on E: Exception do
-      Result := DSERR_NODRIVER;
-  end;
+  // Pascal callers handle exceptions despite the HRESULT compatibility signature.
+  Sound := TGameSound.Create;
+  Result := DS_OK;
 end;
 function EnumerateGameSound(Callback: TDSEnumCallback; Context: Pointer): LongInt; stdcall;
 begin

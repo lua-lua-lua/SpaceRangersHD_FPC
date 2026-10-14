@@ -8,27 +8,35 @@ uses
   EC_Struct,
   Classes,
   GameEvents,
+  GameDiagnostics,
   SysUtils,
   SyncObjs;
 
 type
 
-  EWorkerFailure = class(Exception)
-    WorkerBacktrace: string;
-  end;
+  TThreadPriorityEC = (
+      ThreadPriorityIdle,
+      ThreadPriorityLowest,
+      ThreadPriorityBelowNormal,
+      ThreadPriorityNormal,
+      ThreadPriorityAboveNormal,
+      ThreadPriorityHighest,
+      ThreadPriorityTimeCritical
+  );
+
+  EWorkerFailure = class(EGameDiagnosticException);
 
   TThreadEC = class;
 
   TThreadEC = class(TObjectEx)
   private
     Worker: TThread;
-    Failure: string;
-    FailureBacktrace: string;
+    Failure: TGameExceptionReport;
   public
     Lock: TCriticalSection;
     ThreadHandle: TThreadID;
     ThreadId: TThreadID;
-    Priority: Byte;
+    Priority: TThreadPriorityEC;
     StopRequested: Boolean;
     StopEvent: TGameEventHandle;
     Flag18: Boolean;
@@ -37,10 +45,10 @@ type
     RunningEvent: TGameEventHandle;
     IdleEvent: TGameEventHandle;
     procedure Execute; virtual;
-    constructor Create;
+    constructor Create(const LogName: ShortString = '');
     destructor Destroy; override;
     procedure ProcessRequests;
-    procedure SetPriority(Value: Byte);
+    procedure SetPriority(Value: TThreadPriorityEC);
     procedure SetFlag18;
     procedure ClearFlag18;
     procedure RequestStop;
@@ -52,26 +60,22 @@ type
     procedure CheckFailure;
   end;
 
-const
-
-  ThreadPriorityLowest = 1;
-
-  ThreadPriorityAboveNormal = 4;
-
 implementation
 
 type
   TGameWorker = class(TThread)
     Owner: TThreadEC;
+    LogName: ShortString;
     procedure Execute; override;
   end;
 
 procedure TGameWorker.Execute;
 begin
+  SetGameLogThreadName(LogName);
   Owner.ProcessRequests;
 end;
 
-constructor TThreadEC.Create;
+constructor TThreadEC.Create(const LogName: ShortString);
 var
   NewWorker: TGameWorker;
 begin
@@ -85,6 +89,10 @@ begin
   NewWorker := TGameWorker.Create(True);
   Worker := NewWorker;
   NewWorker.Owner := Self;
+  if LogName = '' then
+    NewWorker.LogName := ClassName
+  else
+    NewWorker.LogName := LogName;
   ThreadHandle := Worker.Handle;
   ThreadId := Worker.ThreadID;
   Worker.Start;
@@ -104,35 +112,32 @@ begin
   CloseGameEvent(RunningEvent);
   CloseGameEvent(ShutdownEvent);
   CloseGameEvent(StopEvent);
+  Failure.Free;
   Lock.Free;
   inherited Destroy;
 end;
 
 procedure TThreadEC.CheckFailure;
 var
-  Message, Backtrace: string;
-  Error: EWorkerFailure;
+  Report: TGameExceptionReport;
 begin
+  Report := nil;
   Lock.Enter;
   try
-    Message := Failure;
-    Backtrace := FailureBacktrace;
+    if Failure <> nil then
+      Report := Failure.Clone;
   finally
     Lock.Leave;
   end;
-  if Message <> '' then
-  begin
-    Error := EWorkerFailure.Create(ClassName + ': ' + Message);
-    Error.WorkerBacktrace := Backtrace;
-    raise Error;
-  end;
+  if Report <> nil then
+    raise EWorkerFailure.Create(Report);
 end;
 
 procedure TThreadEC.ProcessRequests;
 var
   Events: array[0..1] of TGameEventHandle;
   Failed: Boolean;
-  Frame: Integer;
+  Report: TGameExceptionReport;
 begin
   Events[0] := ShutdownEvent;
   Events[1] := StartEvent;
@@ -142,21 +147,12 @@ begin
     try
       Execute;
     except
+      // Log on the worker thread before handing the report to observers.
+      Report := CaptureGameException('Worker ' + ClassName);
+      LogGameException(Report, 'worker');
       Lock.Enter;
       try
-        Failure := ExceptObject.ClassName;
-        if ExceptObject is Exception then
-          Failure := Failure + ': ' + Exception(ExceptObject).Message;
-        // Copy diagnostics; generation and the UI may both observe this failure.
-        if ExceptObject is EWorkerFailure then
-          FailureBacktrace := EWorkerFailure(ExceptObject).WorkerBacktrace
-        else if Assigned(BackTraceStrFunc) then
-        begin
-          FailureBacktrace := BackTraceStrFunc(ExceptAddr);
-          for Frame := 0 to ExceptFrameCount - 1 do
-            FailureBacktrace :=
-                FailureBacktrace + LineEnding + BackTraceStrFunc(ExceptFrames[Frame]);
-        end;
+        Failure := Report;
       finally
         Lock.Leave;
       end;
@@ -181,7 +177,7 @@ begin
     SysUtils.Sleep(100);
 end;
 
-procedure TThreadEC.SetPriority(Value: Byte);
+procedure TThreadEC.SetPriority(Value: TThreadPriorityEC);
 begin
   Priority := Value;
   if Worker <> nil then

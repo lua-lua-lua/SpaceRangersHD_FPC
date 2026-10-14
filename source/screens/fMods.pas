@@ -100,21 +100,8 @@ end;
 
 procedure TfModsManager.InitializeLayout;
 var
-  ButtonWidth,
-  I,
-  J,
-  GroupIndex,
-  SeparateGroups,
-  Weight,
-  CandidateWeight,
-  BestWeight,
-  Reserved28,
-  BestIndex,
-  Reserved30,
-  GroupCount,
-  AvailableTabs: Integer;
+  ButtonWidth, I, J, GroupIndex, SeparateGroups, Weight, CandidateWeight, BestWeight, BestIndex, GroupCount, AvailableTabs: Integer;
   GroupName, SectionName: WideString;
-  Reserved44: Integer;
   Button: TGraphButtonGI;
   ScrollPanel: TPanelScrollBarGI;
   Info, Dependency: TModInfo;
@@ -179,7 +166,7 @@ var
     Switch.UserIndex := Ord(Info.Selected);
     Switch.SetSize(Switch.GetContentSize);
     ButtonWidth := Switch.ClientSize.X;
-    Switch.SetPosition(Point(TabPanels[Tab].ClientSize.X - ButtonWidth - 0, TabHeights[Tab] + 10));
+    Switch.SetPosition(Point(TabPanels[Tab].ClientSize.X - ButtonWidth, TabHeights[Tab] + 10));
     Switch.SetImageKindY(ikyCenter);
     Switch.LeftButtonDownCallback := SwitchMouseDown;
     Switch.MouseEnterCallback := SwitchMouseEnter;
@@ -191,8 +178,7 @@ var
     InfoButton.SetImageDownPath('GI,Bm.MsgPlayer.2UserD');
     InfoButton.SetSize(InfoButton.GetMaxStateImageSize);
     Inc(ButtonWidth, InfoButton.ClientSize.X);
-    InfoButton
-        .SetPosition(Point(TabPanels[Tab].ClientSize.X - ButtonWidth - 0, TabHeights[Tab] + 9));
+    InfoButton.SetPosition(Point(TabPanels[Tab].ClientSize.X - ButtonWidth, TabHeights[Tab] + 9));
     InfoButton.UpCallback := ShowInfoClick;
     InfoButton.UserValue := PtrInt(Info);
     Switch.UserData := PtrInt(TGraphButtonGI.Create(TabPanels[Tab]));
@@ -252,7 +238,7 @@ var
   begin
     for I := 0 to List.Count - 1 do
     begin
-      Info := TModInfo(List[I]);
+      Info := List[I];
       AddModRow(Info, Tab);
     end;
   end;
@@ -281,16 +267,12 @@ begin
     SetSize(Point(GameScreenWidth, GameScreenHeight));
     FindByNameRecursive('BGBuf').SetSize(Point(GameScreenWidth, GameScreenHeight));
     ScrollPanel := FindByNameRecursive('PanelSet') as TPanelScrollBarGI;
-    ScrollPanel.VerticalScrollBar.SetSmallChange(
-        (FindByNameRecursive('ButGroup0') as TGraphButtonGI).CaptionLabel.GetLineHeight * 2
-    );
+    ScrollPanel.VerticalScrollBar.SetSmallChange((FindByNameRecursive('ButGroup0') as TGraphButtonGI).CaptionLabel.GetLineHeight * 2);
     ScrollPanel.VerticalScrollBar.SetLargeChange(ScrollPanel.ClientSize.Y);
     ScrollPanel.VerticalScrollBar.SetPageSize(ScrollPanel.ClientSize.Y);
   end;
   with ScrollPanel.Parent do
-    SetPosition(
-        Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + ExtraScreenHeight div 2)
-    );
+    SetPosition(Point(LocalPosition.X + ExtraScreenWidth div 2, LocalPosition.Y + ExtraScreenHeight div 2));
   (GetByName('Cancel') as TGraphButtonGI).UpCallback := CloseClick;
   (GetByName('Confirm') as TGraphButtonGI).UpCallback := ApplyClick;
   (GetByName('ButReset') as TGraphButtonGI).UpCallback := ClearSelectionClick;
@@ -334,7 +316,7 @@ begin
   GroupIndices := TBlockParEC.Create;
   for I := 0 to ModInfos.Count - 1 do
   begin
-    Info := TModInfo(ModInfos[I]);
+    Info := ModInfos[I];
     if Info.MissingFolder then
       Missing.Add(Info)
     else if (Info.Name = '') and (Info.Section = '') then
@@ -354,7 +336,7 @@ begin
   Dependents := TBlockParEC.Create;
   for I := 0 to ModInfos.Count - 1 do
   begin
-    Info := TModInfo(ModInfos[I]);
+    Info := ModInfos[I];
     if not Info.MissingFolder then
       for J := 0 to Info.DependencyCount - 1 do
       begin
@@ -370,10 +352,7 @@ begin
           else
             SectionName := '{';
           if Block.CountParams(SectionName) > 0 then
-            Block.SetOrAddParam(
-                SectionName,
-                IntToWideString(ExtractDigitsToIntW(Block.GetParam(SectionName)) + 1)
-            )
+            Block.SetOrAddParam(SectionName, IntToWideString(ExtractDigitsToIntW(Block.GetParam(SectionName)) + 1))
           else
             Block.AddParam(SectionName, '1');
         end;
@@ -383,7 +362,7 @@ begin
     Weights.Add(Pointer(TList(Groups[I]).Count));
   for I := 0 to ModInfos.Count - 1 do
   begin
-    Info := TModInfo(ModInfos[I]);
+    Info := ModInfos[I];
     if Info.MissingFolder or (Info.Name = '') or (Dependents.CountBlocks(Info.Name) <= 0) then
       Continue;
     if not Info.DuplicateName then
@@ -491,7 +470,7 @@ begin
     end;
     GroupIndex := ExtractDigitsToIntW(GroupIndices.GetParamValue(BestIndex));
     Weights[GroupIndex] := nil;
-    Group := TList(Groups[GroupIndex]);
+    Group := Groups[GroupIndex];
     GroupName := GroupIndices.GetParamName(BestIndex);
     if GroupName = '{}' then
       GroupName := LocalizedText('FormMods.GroupNameForMisc');
@@ -517,7 +496,7 @@ begin
       end;
       GroupIndex := ExtractDigitsToIntW(GroupIndices.GetParamValue(BestIndex));
       Weights[GroupIndex] := nil;
-      Group := TList(Groups[GroupIndex]);
+      Group := Groups[GroupIndex];
       GroupName := GroupIndices.GetParamName(BestIndex);
       if GroupName = '{}' then
         GroupName := LocalizedText('FormMods.GroupNameForMisc');
@@ -557,7 +536,7 @@ begin
   end;
   for I := 0 to ModInfos.Count - 1 do
   begin
-    Info := TModInfo(ModInfos[I]);
+    Info := ModInfos[I];
     Info.SwitchImage.UserIndex := Ord(Info.Selected);
     if (Info.ConflictCount = 0) and (Info.DependencyCount = 0) then
       UpdateModSwitch(Info.SwitchImage);
@@ -576,14 +555,9 @@ begin
   SelectedTab := -1;
   TabClick(TabButtons[0]);
   if (UserSettingsConfig.CountParams('WeWarnedUserAboutMods') = 0)
-      or not ParseEnabledNameGI(
-          TrimWideString(UserSettingsConfig.GetParamByPathOrMarker('WeWarnedUserAboutMods'))) then
+      or not ParseEnabledNameGI(TrimWideString(UserSettingsConfig.GetParamByPathOrMarker('WeWarnedUserAboutMods'))) then
   begin
-    ShowMessageBoxGI(
-        Self,
-        LocalizedColorText('FormMods.WarningAchievements'),
-        mbgCancel or mbgUnused04
-    );
+    ShowMessageBoxGI(Self, LocalizedColorText('FormMods.WarningAchievements'), mbgCancel or mbgUnused04);
     if UserSettingsConfig.CountParams('WeWarnedUserAboutMods') = 0 then
       UserSettingsConfig.AddParam('WeWarnedUserAboutMods', 'True')
     else
@@ -661,7 +635,7 @@ begin
     InvalidSelections[I] := False;
   for I := 0 to ModInfos.Count - 1 do
   begin
-    Info := TModInfo(ModInfos[I]);
+    Info := ModInfos[I];
     if (Info.ConflictCount <> 0) or (Info.DependencyCount <> 0) then
     begin
       Switch := Info.SwitchImage;
@@ -753,7 +727,7 @@ begin
     Changed := False;
     for I := 0 to ModInfos.Count - 1 do
     begin
-      Info := TModInfo(ModInfos[I]);
+      Info := ModInfos[I];
       if not Info.MissingFolder and not Info.MissingDependency then
       begin
         Switch := Info.SwitchImage;
@@ -813,7 +787,7 @@ begin
               if Info.ReferencedAsConflict then
                 for J := 0 to ModInfos.Count - 1 do
                 begin
-                  Related := TModInfo(ModInfos[J]);
+                  Related := ModInfos[J];
                   if Related.SwitchImage.UserIndex <> 0 then
                   begin
                     for K := 0 to Related.ConflictCount - 1 do
@@ -855,7 +829,7 @@ begin
     Changed := False;
     for I := 0 to ModInfos.Count - 1 do
     begin
-      Info := TModInfo(ModInfos[I]);
+      Info := ModInfos[I];
       Switch := Info.SwitchImage;
       if (Switch.UserIndex <> 0) and (Switch.Parent.UserValue = SelectedTab) then
       begin
@@ -864,7 +838,7 @@ begin
         if Info.ReferencedAsDependency then
           for J := 0 to ModInfos.Count - 1 do
           begin
-            Related := TModInfo(ModInfos[J]);
+            Related := ModInfos[J];
             if Related.SwitchImage.UserIndex <> 0 then
             begin
               for K := 0 to Related.DependencyCount - 1 do
@@ -935,7 +909,7 @@ begin
   Unchanged := True;
   for I := 0 to ModInfos.Count - 1 do
   begin
-    Info := TModInfo(ModInfos[I]);
+    Info := ModInfos[I];
     if (Info.SwitchImage.UserIndex = 1) <> Info.Selected then
     begin
       Unchanged := False;
@@ -952,10 +926,7 @@ begin
         Break;
       end;
     if Ordered
-        or (ShowMessageBoxGI(
-                GetInnermostScreenLoop,
-                LocalizedText('FormMods.QueryWrongOrderFix'),
-                mbgOK or mbgCancel or mbgWarning)
+        or (ShowMessageBoxGI(GetInnermostScreenLoop, LocalizedText('FormMods.QueryWrongOrderFix'), mbgOK or mbgCancel or mbgWarning)
             <> mbgResultOK) then
     begin
       if ExitCode = 0 then
@@ -968,7 +939,7 @@ begin
   List := TList.Create;
   for I := 0 to ModInfos.Count - 1 do
   begin
-    Info := TModInfo(ModInfos[I]);
+    Info := ModInfos[I];
     if Info.SwitchImage.UserIndex = 1 then
       List.Add(Info);
   end;
@@ -979,7 +950,7 @@ begin
       for J := 0 to List.Count - 1 - I do
         if TModInfo(List[J]).Priority > TModInfo(List[J + 1]).Priority then
         begin
-          Info := TModInfo(List[J]);
+          Info := List[J];
           List[J] := List[J + 1];
           List[J + 1] := Info;
         end;
@@ -1063,9 +1034,7 @@ var
         ReplaceTextToken(
             Name,
             '<ModName>',
-            TextHighlightColorTag
-                + TrimWideString(ExtractDelimitedPartW(Info.DependencyNames, PartIndex, ','))
-                + EndColorTag,
+            TextHighlightColorTag + TrimWideString(ExtractDelimitedPartW(Info.DependencyNames, PartIndex, ',')) + EndColorTag,
             ''
         );
         ShowMessageBoxGI(Self, Name, mbgOK or mbgError);
@@ -1123,8 +1092,7 @@ var
             end;
             Caption := LocalizedText('FormMods.QuerySelectDependency');
             ReplaceTextToken(Caption, '<ModName>', Name, '');
-            if ShowListDialog(GetInnermostScreenLoop, SelectedIndex, Caption, Choices, 0, 0)
-                <> 1 then
+            if ShowListDialog(GetInnermostScreenLoop, SelectedIndex, Caption, Choices, 0, 0) <> 1 then
               SelectedIndex := -1;
             for I := 0 to Choices.Count - 1 do
               Dispose(Pointer(Choices[I]));
@@ -1167,7 +1135,7 @@ begin
         PassChanged := False;
         for I := 0 to ModInfos.Count - 1 do
         begin
-          Related := TModInfo(ModInfos[I]);
+          Related := ModInfos[I];
           if Related.SwitchImage.UserIndex <> 0 then
             if Related.DependencyCount <> 0 then
               if DisableIndices.CountParams(IntToWideString(I)) <= 0 then
@@ -1182,8 +1150,7 @@ begin
                       VariantIndex := 0;
                       while Dependency <> nil do
                       begin
-                        if (Dependency.SwitchImage.UserIndex = 1)
-                            and (DisableIndices.CountParams(Dependency.IndexText) <= 0) then
+                        if (Dependency.SwitchImage.UserIndex = 1) and (DisableIndices.CountParams(Dependency.IndexText) <= 0) then
                         begin
                           Alternative := True;
                           Break;
@@ -1226,8 +1193,7 @@ begin
       Text := LocalizedText('FormMods.QueryTurnOffWithExtra');
       ReplaceTextToken(Text, '<ModName>', TextHighlightColorTag + Info.Name + EndColorTag, '');
       ReplaceTextToken(Text, '<ModsList>', TextHighlightColorTag + Value + EndColorTag, '');
-      if ShowMessageBoxGI(GetInnermostScreenLoop, Text, mbgOK or mbgCancel or mbgQuestion)
-          <> mbgResultOK then
+      if ShowMessageBoxGI(GetInnermostScreenLoop, Text, mbgOK or mbgCancel or mbgQuestion) <> mbgResultOK then
         Exit;
       for I := 0 to DisableIndices.GetParamCount - 1 do
       begin
@@ -1238,9 +1204,7 @@ begin
     end
     else
     begin
-      if not Info.ReferencedAsConflict
-          and (Info.ConflictCount = 0)
-          and (Info.DependencyCount = 0) then
+      if not Info.ReferencedAsConflict and (Info.ConflictCount = 0) and (Info.DependencyCount = 0) then
       begin
         SetModSelected(Sender, True);
         Changed := True;
@@ -1255,7 +1219,7 @@ begin
         Exit;
       for I := 0 to EnableIndices.GetParamCount - 1 do
       begin
-        Related := TModInfo(ModInfos[ExtractDigitsToIntW(EnableIndices.GetParamName(I))]);
+        Related := ModInfos[ExtractDigitsToIntW(EnableIndices.GetParamName(I))];
         for J := 0 to Related.ConflictCount - 1 do
         begin
           Dependency := Related.Conflicts[J];
@@ -1284,7 +1248,7 @@ begin
       end;
       for I := 0 to ModInfos.Count - 1 do
       begin
-        Related := TModInfo(ModInfos[I]);
+        Related := ModInfos[I];
         if Related.ConflictCount <> 0 then
         begin
           Text := IntToWideString(I);
@@ -1314,7 +1278,7 @@ begin
         PassChanged := False;
         for I := 0 to ModInfos.Count - 1 do
         begin
-          Related := TModInfo(ModInfos[I]);
+          Related := ModInfos[I];
           if Related.DependencyCount <> 0 then
           begin
             Value := IntToWideString(I);
@@ -1331,8 +1295,7 @@ begin
                     VariantIndex := 0;
                     while Dependency <> nil do
                     begin
-                      if (Dependency.SwitchImage.UserIndex = 1)
-                          and (DisableIndices.CountParams(Dependency.IndexText) <= 0) then
+                      if (Dependency.SwitchImage.UserIndex = 1) and (DisableIndices.CountParams(Dependency.IndexText) <= 0) then
                       begin
                         Alternative := True;
                         Break;
@@ -1411,14 +1374,8 @@ begin
         Value := Value + #13#10 + Temp
       else
         Value := Value + Temp;
-      Temp :=
-          LocalizedText('FormMods.QueryTurnOnWithExtra0')
-              + #13#10
-              + Value
-              + #13#10
-              + LocalizedText('FormMods.QueryTurnOnWithExtra3');
-      if ShowMessageBoxGI(GetInnermostScreenLoop, Temp, mbgOK or mbgCancel or mbgQuestion)
-          <> mbgResultOK then
+      Temp := LocalizedText('FormMods.QueryTurnOnWithExtra0') + #13#10 + Value + #13#10 + LocalizedText('FormMods.QueryTurnOnWithExtra3');
+      if ShowMessageBoxGI(GetInnermostScreenLoop, Temp, mbgOK or mbgCancel or mbgQuestion) <> mbgResultOK then
         Exit;
       Changed := True;
       for I := 0 to DisableIndices.GetParamCount - 1 do
@@ -1485,10 +1442,7 @@ begin
       Dec(WarningCounts[Tab]);
   end;
   UpdateModSwitch(Sender);
-  if (Info.ConflictCount > 0)
-      or (Info.DependencyCount > 0)
-      or Info.ReferencedAsConflict
-      or Info.ReferencedAsDependency then
+  if (Info.ConflictCount > 0) or (Info.DependencyCount > 0) or Info.ReferencedAsConflict or Info.ReferencedAsDependency then
     NeedsValidation := True;
 end;
 
@@ -1500,11 +1454,7 @@ begin
   Info := TModInfo(Sender.UserValue);
   Selected := Sender.UserIndex = 1;
   Warning :=
-      Info.DuplicateName
-          or Info.Misplaced
-          or (Info.UnsupportedLanguage and Selected)
-          or Info.MissingFolder
-          or Info.MissingDependency;
+      Info.DuplicateName or Info.Misplaced or (Info.UnsupportedLanguage and Selected) or Info.MissingFolder or Info.MissingDependency;
   if Selected then
     (Sender as TImageGI).SetImagePath('GI,Bm.FormOptions2.2SwitchD')
   else
@@ -1545,12 +1495,7 @@ begin
   if Info.DependencyNames <> '' then
   begin
     Text := LocalizedText('FormMods.InfoDependencies');
-    ReplaceTextToken(
-        Text,
-        '<Mods>',
-        TextHighlightColorTag + Info.DependencyNames + EndColorTag,
-        ''
-    );
+    ReplaceTextToken(Text, '<Mods>', TextHighlightColorTag + Info.DependencyNames + EndColorTag, '');
     Body := Body + Text + #13#10 + ' ' + #13#10;
   end;
   if Info.ConflictNames <> '' then
@@ -1595,7 +1540,7 @@ begin
       Value := '';
       for I := 0 to ModInfos.Count - 1 do
       begin
-        Related := TModInfo(ModInfos[I]);
+        Related := ModInfos[I];
         if Related.DuplicateName and (Related.Name = Info.Name) and (Related <> Info) then
           if Value = '' then
             Value := Related.Folder
@@ -1652,9 +1597,7 @@ begin
           ReplaceTextToken(
               Value,
               '<Mod>',
-              TextHighlightColorTag
-                  + TrimWideString(ExtractDelimitedPartW(Info.DependencyNames, J, ','))
-                  + EndColorTag,
+              TextHighlightColorTag + TrimWideString(ExtractDelimitedPartW(Info.DependencyNames, J, ',')) + EndColorTag,
               ''
           );
           Body := Body + Value + #13#10 + ' ' + #13#10;
